@@ -8,7 +8,7 @@ setup(
     license='MIT',
     author='Shiyao Ma',
     author_email='i@introo.me',
-    packages=['parseproto', 'parseproto.test'],
+    packages=['parseproto', 'parseproto.test', 'parseproto.test'],
     install_requires=[
         'twisted >= 13.0.0',
         'parsley >= 1.1',
