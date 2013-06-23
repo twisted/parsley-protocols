@@ -64,6 +64,11 @@ from twisted.python import randbytes
 from twisted.python.compat import _PY3, unicode, comparable, cmp, nativeString
 
 
+# Parsley imports
+from parsley import makeGrammar
+from protocols.dns import grammar
+
+
 if _PY3:
     def _ord2bytes(ordinal):
         """
@@ -1750,8 +1755,8 @@ class Message:
     # doesn't become an attribute.
     del name
 
-
-    def lookupRecordType(self, type):
+    @classmethod
+    def lookupRecordType(cls, type):
         """
         Retrieve the L{IRecord} implementation for the given record type.
 
@@ -1762,7 +1767,7 @@ class Message:
             can be found for the given type.
         @rtype: L{types.ClassType}
         """
-        return self._recordTypes.get(type, UnknownRecord)
+        return cls._recordTypes.get(type, UnknownRecord)
 
 
     def toStr(self):
@@ -1787,6 +1792,137 @@ class Message:
         strio = BytesIO(str)
         self.decode(strio)
 
+
+class DNSParser:
+    _grammarSource = grammar.grammarSource
+
+    def __init__(self, data):
+        self.data = data
+        self.bindings = {'DNSParser': self}
+        self.parser = makeGrammar(self._grammarSource, self.bindings)
+
+
+    def parse(self):
+        return self.parser(self.data).message()
+        # return self.parser(self.data).name()
+
+
+    # def processHeader(self, byte3, byte4):
+    #     return ((byte3 >> 7) & 1,
+    #             (byte3 >> 3) & 0xf,
+    #             (byte3 >> 2) & 1,
+    #             (byte3 >> 1) & 1,
+    #             byte3 & 1,
+    #             (byte4 >> 7) & 1,
+    #             byte4 & 0xf)
+
+    # def updateQuery(self, name, type, cls):
+    #     # q = Query()
+    #     # q.name.name = name
+    #     # q.type, q.cls = type, cls
+    #     # self.msg.queries.append(q)
+    #     # print(name)
+    #     pass
+
+
+    # def preName(self):
+    #     self.tempName = b''
+    #     self.tempNameOffset = 0
+
+
+    # def postName(self):
+    #     if self.tempNameOffset == 0:
+    #         return
+    #     visited = set()
+    #     if self.tempNameOffset in visited:
+    #         raise ValueError("Compression loop in compressed name")
+    #     visited.add(self.tempNameOffset)
+    #     while 1:
+    #         l = ord(self.data[self.tempNameOffset])
+    #         self.tempNameOffset += 1
+    #         if l == 0:
+    #             return
+    #         if (l >> 6) == 3:
+    #             self.tempNameOffset = (l & 63) << 8 | ord(self.data[self.tempNameOffset])
+    #             continue
+    #         label = self.data[self.tempNameOffset: self.tempNameOffset + l]
+    #         if self.tempName == b'':
+    #             self.tempName = label
+    #         else:
+    #             self.tempName = self.tempName + b'.' + label
+
+
+    # def updateName(self, label):
+    #     if self.tempName == b'':
+    #         self.tempName = label
+    #     else:
+    #         self.tempName = self.tempName + b'.' + label
+
+
+    # def updateNameOffset(self, ptrH, ptrL):
+    #     self.tempNameOffset = (ptrH & 63) << 8 | ptrL
+
+
+    @classmethod
+    def getType(cls, t, *args):
+        if isinstance(t, int):
+            # Message.lookupRecordType(t)
+            pass
+            return
+        if t == 'message':
+            return cls.getMessage(*args)
+        if t == 'query':
+            return cls.getQuery(*args)
+        if t == 'name':
+            return cls.getName(*args)
+
+    @classmethod
+    def getName(cls, data, labels, offset=-1):
+        name = b'.'.join(labels)
+        if offset == -1:
+            return Name(name=name)
+        visited = set()
+        if offset in visited:
+            raise ValueError("Compression loop in compressed name")
+        visited.add(offset)
+        while 1:
+            l = ord(data[offset])
+            offset += 1
+            if l == 0:
+                return
+            if (l >> 6) == 3:
+                offset = (l & 63) << 8 | ord(data[offset])
+                continue
+            label = data[offset: offset + l]
+            if name == b'':
+                name = label
+            else:
+                name = name + b'.' + label
+        return Name(name)
+
+    @classmethod
+    def getQuery(cls, n, t, c):
+        q = Query(n.name, t, c)
+        print("I am in")
+        return q
+
+
+    @classmethod
+    def getMessage(cls, msgHeader, queries):
+        m = Message()
+        m.maxSize = 0
+        m.id = msgHeader[0]
+        m.answer = (msgHeader[1][0] >> 7) & 1
+        m.opCode = (msgHeader[1][0] >> 3) & 1
+        m.auth = (msgHeader[1][0] >> 2) & 1
+        m.trunc = (msgHeader[1][0] >> 1) & 1
+        m.recDes = msgHeader[1][0] & 1
+        m.recAv = (msgHeader[1][1] >> 7) & 1
+        m.rCode = msgHeader[1][1] & 0xf
+
+        m.queries = queries
+
+        return m
 
 
 class DNSMixin(object):

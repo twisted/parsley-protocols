@@ -9,23 +9,18 @@ short = byte:high byte:low -> high << 8 | low
 int = short:high short:low -> high << 16 | low
 
 
-message = header:h
-header = short:id byte:byte3 byte:byte4 !(DNSParser.updateHeader(id, byte3, byte4))
-        short:nqueries short:nans short:nns short:nadd -> nqueries, nans, nns, nadd
+message = header:msgHeader (-> msgHeader[2][0]):nq query{nq}:nqueries
+            -> DNSParser.getType('message', msgHeader, nqueries)
+# message = header:msgHeader
+#             -> DNSParser.getType('message', msgHeader, [])
+header = short:id byte{2}:b2 short{4}:s4 -> id, b2, s4 # header of a message
 
-header = short:id byte:byte3 byte:byte4 !(parser.type['header']
-
-
-
-
-
-query = name:n short:type short:cls !(DNSParser.updateQuery(n, type, cls))
-
-name = !(DNSParser.preName()) label* (byte:b ?(b == 0) -> DNSParser.tempName
-        | pointer !(DNSParser.postName()) -> DNSParser.tempName)
-
-# label = byte:l ?(0 < l < 64) <byte{l}>:la !(DNSParser.updateName(la))
-# pointer = byte:ptrH ?(ptrH >> 6 == 3) byte:ptrL !(DNSParser.updateNameOffset(ptrH, ptrL))
+query = name:n short:t short:c -> DNSParser.getType('query', n, t, c)
+# name = <bytes{9}>
+name = label*:labels (byte:b ?(b == 0) -> DNSParser.getType('name', labels)
+        | pointer:offset -> DNSParser.getType('name', labels, offset))
+label = byte:l ?(0 < l < 64) <byte{l}>:label -> label
+pointer = byte:ptrH ?(ptrH >> 6 == 3) byte:ptrL -> (ptrH & 63) << 8 | ptrL
 
 # rrheader = name:n short:type short:cls int:ttl short:rdlength
 #             (->DNSParser.msg.lookupRecordType(type)):t ?(t)
