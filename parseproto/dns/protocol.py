@@ -1804,63 +1804,6 @@ class DNSParser:
 
     def parse(self):
         return self.parser(self.data).message()
-        # return self.parser(self.data).name()
-
-
-    # def processHeader(self, byte3, byte4):
-    #     return ((byte3 >> 7) & 1,
-    #             (byte3 >> 3) & 0xf,
-    #             (byte3 >> 2) & 1,
-    #             (byte3 >> 1) & 1,
-    #             byte3 & 1,
-    #             (byte4 >> 7) & 1,
-    #             byte4 & 0xf)
-
-    # def updateQuery(self, name, type, cls):
-    #     # q = Query()
-    #     # q.name.name = name
-    #     # q.type, q.cls = type, cls
-    #     # self.msg.queries.append(q)
-    #     # print(name)
-    #     pass
-
-
-    # def preName(self):
-    #     self.tempName = b''
-    #     self.tempNameOffset = 0
-
-
-    # def postName(self):
-    #     if self.tempNameOffset == 0:
-    #         return
-    #     visited = set()
-    #     if self.tempNameOffset in visited:
-    #         raise ValueError("Compression loop in compressed name")
-    #     visited.add(self.tempNameOffset)
-    #     while 1:
-    #         l = ord(self.data[self.tempNameOffset])
-    #         self.tempNameOffset += 1
-    #         if l == 0:
-    #             return
-    #         if (l >> 6) == 3:
-    #             self.tempNameOffset = (l & 63) << 8 | ord(self.data[self.tempNameOffset])
-    #             continue
-    #         label = self.data[self.tempNameOffset: self.tempNameOffset + l]
-    #         if self.tempName == b'':
-    #             self.tempName = label
-    #         else:
-    #             self.tempName = self.tempName + b'.' + label
-
-
-    # def updateName(self, label):
-    #     if self.tempName == b'':
-    #         self.tempName = label
-    #     else:
-    #         self.tempName = self.tempName + b'.' + label
-
-
-    # def updateNameOffset(self, ptrH, ptrL):
-    #     self.tempNameOffset = (ptrH & 63) << 8 | ptrL
 
 
     @classmethod
@@ -1877,7 +1820,7 @@ class DNSParser:
             return cls.getName(*args)
 
     @classmethod
-    def getName(cls, data, labels, offset=-1):
+    def getName(cls, labels, offset=-1, data=b''):
         name = b'.'.join(labels)
         if offset == -1:
             return Name(name=name)
@@ -1903,7 +1846,6 @@ class DNSParser:
     @classmethod
     def getQuery(cls, n, t, c):
         q = Query(n.name, t, c)
-        print("I am in")
         return q
 
 
