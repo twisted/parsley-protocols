@@ -1806,21 +1806,107 @@ class DNSParser:
         return self.parser(self.data).message()
 
 
-    @classmethod
-    def getType(cls, t, *args):
+    def getType(self, t, *args, **kwargs):
         if isinstance(t, int):
-            # Message.lookupRecordType(t)
-            pass
-            return
+            payload = Message.lookupRecordType(t)
+            return self.getPayload(payload, **kwargs)
         if t == 'message':
-            return cls.getMessage(*args)
+            return self.getMessage(*args)
         if t == 'query':
-            return cls.getQuery(*args)
+            return self.getQuery(*args)
         if t == 'name':
-            return cls.getName(*args)
+            return self.getName(*args)
+        if t == 'rrheader':
+            return self.getRRHeader(*args)
 
-    @classmethod
-    def getName(cls, labels, offset=-1, data=b''):
+
+    def getPayloadName(self, t):
+        return QUERY_TYPES.get(t, "UnknownRecord")
+
+    def getPayload(self, plname, **kwargs):
+        ttl = kwargs['ttl']
+        if plname != "UnknownRecord":
+            payload = globals()["Record_" + plname](ttl=ttl)
+        else:
+            payload = UnknownRecord(ttl=ttl)
+        if plname == 'A':
+            payload.address = kwargs['address']
+            return payload
+        if plname == 'A6':
+            prefixLen = kwargs['prefixLen']
+            bytes = kwargs['bytes']
+            payload.prefixLen, payload.bytes = prefixLen, bytes
+            if kwargs['suffix'] is not None:
+                payload.suffix = b'\x00' * (16 - bytes) + kwargs['suffix']
+            if kwargs['prefix'] is not None:
+                payload.prefix = kwargs['prefix']
+            return payload
+        if plname == 'AAAA':
+            payload.address = kwargs['address']
+            return payload
+        if plname == 'AFSDB':
+            payload.subtype = kwargs['subtype']
+            payload.hostname = kwargs['hostname']
+            return payload
+        if plname in ('CNAME', 'DNAME', 'MB', 'MD', 'MF', 'MR', 'NS', 'PTR', 'SPF'):
+            payload.name = kwargs['name']
+            return payload
+        if plname == 'HINFO':
+            payload.cpu, payload.os = kwargs['cpu'], kwargs['os']
+            return payload
+        if plname == 'MINFO':
+            payload.rmailbx, payload.emailbx = kwargs['rmailbx'], kwargs['emailbx']
+            return payload
+        if plname == 'MX':
+            payload.preference, payload.name = kwargs['preference'], kwargs['name']
+            return payload
+        if plname == 'NAPTR':
+            payload.order, payload.preference = kwargs['order'], kwargs['preference']
+            payload.flags = kwargs['flags']
+            payload.service = kwargs['service']
+            payload.regexp = kwargs['regexp']
+            payload.replacement = kwargs['replacement']
+            return payload
+        if plname == 'NULL':
+            payload.payload = kwargs['payload']
+            return payload
+        if plname == 'RP':
+            payload.mbox, payload.txt = kwargs['mbox'], kwargs['txt']
+            return payload
+        if plname == 'SOA':
+            payload.mname, payload.rname = kwargs['mname'], kwargs['rname']
+            payload.serial = kwargs['serial']
+            payload.refresh = kwargs['refresh']
+            payload.retry = kwargs['retry']
+            payload.expire = kwargs['expire']
+            payload.minimum = kwargs['minimum']
+            return payload
+        if plname == 'SRV':
+            payload.priority = kwargs['priority']
+            payload.weight = kwargs['weight']
+            payload.port = kwargs['port']
+            payload.target =kwargs['target']
+            return payload
+        if plname == 'TXT':
+            payload.data = kwargs['data']
+            return payload
+        if plname == 'WKS':
+            payload.address = kwargs['address']
+            payload.protocol = kwargs['protocol']
+            payload.map = kwargs['map']
+            return payload
+        if plname == 'UnknownRecord':
+            payload.data = kwargs['data']
+            return payload
+
+
+    def getRRHeader(self, name, type, cls, ttl, rdlength, payload):
+        auth = (self.data[2] >> 2) & 1
+        rrh = RRHeader(name=name.name, type=type, cls=cls, ttl=ttl, payload=payload, auth=auth)
+        rrh.rdlength = rdlength
+
+
+    def getName(self, labels, offset=-1):
         name = b'.'.join(labels)
         if offset == -1:
             return Name(name=name)
@@ -1829,28 +1915,27 @@ class DNSParser:
             raise ValueError("Compression loop in compressed name")
         visited.add(offset)
         while 1:
-            l = ord(data[offset])
+            l = ord(self.data[offset])
             offset += 1
             if l == 0:
                 return
             if (l >> 6) == 3:
-                offset = (l & 63) << 8 | ord(data[offset])
+                offset = (l & 63) << 8 | ord(self.data[offset])
                 continue
-            label = data[offset: offset + l]
+            label = self.data[offset: offset + l]
             if name == b'':
                 name = label
             else:
                 name = name + b'.' + label
         return Name(name)
 
-    @classmethod
-    def getQuery(cls, n, t, c):
+
+    def getQuery(self, n, t, c):
         q = Query(n.name, t, c)
         return q
 
 
-    @classmethod
-    def getMessage(cls, msgHeader, queries):
+    def getMessage(self, msgHeader, queries):
         m = Message()
         m.maxSize = 0
         m.id = msgHeader[0]
