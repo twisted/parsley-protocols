@@ -9,17 +9,17 @@ long = int:high int:low -> high << 32 | low
 
 message = short:id
             byte:b
-            (-> b>>7 & 1, b>>3 & 1, b>>2 & 1, b>>1 & 1, b & 1):(anwser, opCode, auth, trunc, recDes)
+            (-> b>>7 & 1, b>>3 & 1, b>>2 & 1, b>>1 & 1, b & 1):(answer, opCode, auth, trunc, recDes)
             byte:b (-> b>>7 & 1, b & 0xf):(recAv, rCode)
             short:nq short:nans short:nns short:nadd
             query{nq}:nqueries
             (rrheader(auth)){nans}:rrhnans
             (rrheader(auth)){nns}:rrhnns
             (rrheader(auth)){nadd}:rrhnadd
-            -> DNSParser.getType('message', answer, opCode, auth, trunc, recDes,
-                recAv, rCode, nqueries, rrhnans, rrhnns, rrhadd)
+            -> DNSParser.getType('message', id, answer, opCode, auth, trunc, recDes,
+                recAv, rCode, nqueries, rrhnans, rrhnns, rrhnadd)
 
-query = name:n short:t short:c -> DNSParser.getType('query', n, t, c)
+query = name:n short:t short:c -> DNSParser.getType('query', n.name, t, c)
 
 name = label*:labels (byte:b ?(b == 0) -> DNSParser.getType('name', labels)
         | pointer:offset -> DNSParser.getType('name', labels, offset))
@@ -28,7 +28,7 @@ pointer = byte:ptrH ?(ptrH >> 6 == 3) byte:ptrL -> (ptrH & 63) << 8 | ptrL
 
 rrheader :auth = name:n short:t short:cls int:ttl short:rdlength
             (-> DNSParser.getPayloadName(t)):plname payload(plname, ttl, rdlength):pl
-            -> DNSParser.getType('rrheader', auth, n, t, cls, ttl, pl)
+            -> DNSParser.getType('rrheader', n.name, t, cls, ttl, pl, auth)
 
 
 payload 'A' :ttl :rdl = <anything{4}>:address
@@ -86,7 +86,7 @@ payload 'WKS' :ttl :rdl = <anything{4}>:address byte:protocol (-> rdl - 5):l <an
                             -> DNSParser.getType('WKS', ttl=ttl, address=address,
                                 protocol=protocol, map=map)
 payload 'UnknownRecord' :ttl :rdl = <anything{rdl}>:data
-                                    -> DNSParser.getType('UnknownRecord', ttl=ttl, data=data)
+                                    -> DNSParser.getType('UnknownRecord', data=data, ttl=ttl)
 """
 
 

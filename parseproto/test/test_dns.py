@@ -1768,8 +1768,64 @@ class DNSParserTests(unittest.TestCase):
         self.parser = dns.DNSParser(data=b'')
 
 
-    def test_Name(self):
+    def test_name(self):
         self.parser.refresh(b"\x07example\x03com\x00")
-        self.assertEqual(dns.Name(b"example.com"), self.parser.Name())
+        self.assertEqual(dns.Name(b"example.com"), self.parser.name())
 
 
+    # def test_unknown(self):
+    #     """
+    #     A resource record of unknown type and class is parsed into an
+    #     L{UnknownRecord} instance with its data preserved, and an
+    #     L{UnknownRecord} instance is serialized to a string equal to the one it
+    #     was parsed from.
+    #     """
+    #     wire = (
+    #         b'\x01\x00' # Message ID
+    #         b'\x00' # answer bit, opCode nibble, auth bit, trunc bit, recursive
+    #                 # bit
+    #         b'\x00' # recursion bit, empty bit, empty bit, empty bit, response
+    #                 # code nibble
+    #         b'\x00\x01' # number of queries
+    #         b'\x00\x01' # number of answers
+    #         b'\x00\x00' # number of authorities
+    #         b'\x00\x01' # number of additionals
+    #
+    #         # query
+    #         b'\x03foo\x03bar\x00'    # foo.bar
+    #         b'\xde\xad'              # type=0xdead
+    #         b'\xbe\xef'              # cls=0xbeef
+    #
+    #         # 1st answer
+    #         b'\xc0\x0c'              # foo.bar - compressed
+    #         b'\xde\xad'              # type=0xdead
+    #         b'\xbe\xef'              # cls=0xbeef
+    #         b'\x00\x00\x01\x01'      # ttl=257
+    #         b'\x00\x08somedata'      # some payload data
+    #
+    #         # 1st additional
+    #         b'\x03baz\x03ban\x00'    # baz.ban
+    #         b'\x00\x01'              # type=A
+    #         b'\x00\x01'              # cls=IN
+    #         b'\x00\x00\x01\x01'      # ttl=257
+    #         b'\x00\x04'              # len=4
+    #         b'\x01\x02\x03\x04'      # 1.2.3.4
+    #         )
+    #
+    #     msg = self.parser.refresh(wire).message()
+    #
+    #     self.assertEqual(msg.queries, [
+    #             dns.Query(b'foo.bar', type=0xdead, cls=0xbeef),
+    #             ])
+    #     self.assertEqual(msg.answers, [
+    #             dns.RRHeader(b'foo.bar', type=0xdead, cls=0xbeef, ttl=257,
+    #                          payload=dns.UnknownRecord(b'somedata', ttl=257)),
+    #             ])
+    #     self.assertEqual(msg.additional, [
+    #             dns.RRHeader(b'baz.ban', type=dns.A, cls=dns.IN, ttl=257,
+    #                          payload=dns.Record_A('1.2.3.4', ttl=257)),
+    #             ])
+    #
+    #     enc = msg.toStr()
+    #
+    #     self.assertEqual(enc, wire)

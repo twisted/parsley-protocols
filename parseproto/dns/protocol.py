@@ -441,28 +441,29 @@ class Name:
 
 
     @classmethod
-    def getName(cls, data, labels, offset=None):
+    def fromRawData(cls, data, labels, offset=None):
         name = b'.'.join(labels)
         if offset is None:
             return cls(name=name)
         visited = set()
-        if offset in visited:
-            raise ValueError("Compression loop in compressed name")
         visited.add(offset)
         while 1:
             l = ord(data[offset])
             offset += 1
             if l == 0:
-                return
+                return cls(name)
             if (l >> 6) == 3:
                 offset = (l & 63) << 8 | ord(data[offset])
+                if offset in visited:
+                    raise ValueError("Compression loop in compressed name")
+                visited.add(offset)
                 continue
-            label = data[offset: offset + l]
+            label = data[offset: offset+l]
+            offset += l
             if name == b'':
                 name = label
             else:
                 name = name + b'.' + label
-        return cls(name)
 
 
     def __eq__(self, other):
@@ -530,10 +531,6 @@ class Query:
         self.type, self.cls = struct.unpack("!HH", buff)
 
 
-    @classmethod
-    def fromRawData(cls, n, t, c):
-        q = cls(n.name, t, c)
-        return q
 
 
     def __hash__(self):
@@ -642,10 +639,6 @@ class RRHeader(tputil.FancyEqMixin):
 
     def isAuthoritative(self):
         return self.auth
-
-    @classmethod
-    def fromRawData(cls, auth, name, type, c, ttl, payload):
-        return cls(name=name.name, type=type, cls=c, ttl=ttl, payload=payload, auth=auth)
 
 
     def __str__(self):
@@ -1837,7 +1830,7 @@ class Message:
 
     @classmethod
     def fromRawData(cls, id, answer, opCode, auth, trunc, recDes,
-                   recAv, rCode, nqueries, rrhnans, rrhnns, rrhadd):
+                   recAv, rCode, nqueries, rrhnans, rrhnns, rrhnadd):
         m = cls()
         m.maxSize = 0
         m.id, m.answer, m.opCode, m.auth, m.trunc, m.recDes, m.recAv, m.rCode = (
@@ -1845,7 +1838,7 @@ class Message:
         m.queries = nqueries
         m.answers = rrhnans
         m.authority = rrhnns
-        m.additional = rrhadd
+        m.additional = rrhnadd
         return m
 
 
@@ -1858,19 +1851,20 @@ class DNSParser:
     def refresh(self, data=b''):
         self.data = data
         self.bindings = {'DNSParser': self}
-        self.parser = makeGrammar(self._grammarSource, self.bindings)
+        self.parser = makeGrammar(self._grammarSource, self.bindings)(self.data)
+        return self
 
     def getType(self, t, *args, **kwargs):
         if t == 'message':
             return Message.fromRawData(*args)
         if t == 'query':
-            return Query.fromRawData(*args)
+            return Query(*args)
         if t == 'name':
             return Name.fromRawData(self.data, *args)
         if t == 'rrheader':
-            return RRHeader.fromRawData(*args)
+            return RRHeader(*args)
         if t == 'UnknownRecord':
-            return UnknownRecord.fromRawData(*args)
+            return UnknownRecord(*args)
         if t.upper() in __all__:
             # we assume it's in the form like Record_CNAME
             # and we could directly instantiate the class here

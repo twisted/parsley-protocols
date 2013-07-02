@@ -11,7 +11,7 @@ setup(
     packages=['parseproto', 'parseproto.test'],
     install_requires=[
         'twisted >= 13.0.0',
-        'parsley >= 1.1',
+        # 'parsley >= 1.1',
     ],
     zip_safe=False,
 )
