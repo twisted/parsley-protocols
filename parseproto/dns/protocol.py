@@ -1852,15 +1852,13 @@ class Message:
 class DNSParser:
     _grammarSource = grammar.grammarSource
 
-    def __init__(self, data):
+    def __init__(self, data=b''):
+        self.refresh(data)
+
+    def refresh(self, data=b''):
         self.data = data
         self.bindings = {'DNSParser': self}
         self.parser = makeGrammar(self._grammarSource, self.bindings)
-
-
-    def parse(self):
-        return self.parser(self.data).message()
-
 
     def getType(self, t, *args, **kwargs):
         if t == 'message':
@@ -1882,6 +1880,9 @@ class DNSParser:
     def getPayloadName(self, t):
         return QUERY_TYPES.get(t, "UnknownRecord")
 
+
+    def __getattr__(self, item):
+        return getattr(self.parser, item)
 
 
 
