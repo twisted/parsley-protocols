@@ -15,16 +15,40 @@ from io import BytesIO
 # Twisted imports
 from twisted.names import dns
 from twisted.trial import unittest
+from twisted.internet import address, task
+from twisted.internet.error import CannotListenError
+from twisted.test import proto_helpers
 
 # dns import from parsley-protocols
 from parseproto.dns import protocol
 
 
 
+class TestController(object):
+    """
+    Pretend to be a DNS query processor for a DNSDatagramProtocol.
+
+    @ivar messages: the list of received messages.
+    @type messages: C{list} of (msg, protocol, address)
+    """
+
+    def __init__(self):
+        """
+        Initialize the controller: create a list of messages.
+        """
+        self.messages = []
+
+
+    def messageReceived(self, msg, proto, addr):
+        """
+        Save the message so that it can be checked during the tests.
+        """
+        self.messages.append((msg, proto, addr))
+
 
 class DNSParserTests(unittest.TestCase):
     """
-    Tests for parseproto.dns.protocol.DNSParser
+    Tests of parseproto.dns.protocol.DNSParser
     """
 
     names = [b"example.org", b"go-away.fish.tv", b"23strikesback.net"]
@@ -40,7 +64,7 @@ class DNSParserTests(unittest.TestCase):
         from the file-like object passed to it.
         """
         self.parser.updateData(b"\x07example\x03com\x00")
-        self.assertEqual(dns.Name(b"example.com"), self.parser.name())
+        self.assertEqual(dns.Name(b"example.com"), self.parser.ruleName())
 
 
     def test_unknown(self):
@@ -81,8 +105,8 @@ class DNSParserTests(unittest.TestCase):
             b'\x00\x04'              # len=4
             b'\x01\x02\x03\x04'      # 1.2.3.4
             )
-
-        msg = self.parser.updateData(wire).message()
+        self.parser.updateData(wire)
+        msg = self.parser.ruleMessage()
         self.assertEqual(msg.queries, [
                 dns.Query(b'foo.bar', type=0xdead, cls=0xbeef),
                 ])
@@ -104,7 +128,7 @@ class DNSParserTests(unittest.TestCase):
         compression loop.
         """
         self.parser.updateData(b"\xc0\x00")
-        self.assertRaises(ValueError, self.parser.name)
+        self.assertRaises(ValueError, self.parser.ruleName)
 
 
     def test_nameRoundTrip(self):
@@ -116,7 +140,7 @@ class DNSParserTests(unittest.TestCase):
             dns.Name(n).encode(f)
             f.seek(0, 0)
             self.parser.updateData(f.read1(-1))
-            self.assertEqual(self.parser.name().name, n)
+            self.assertEqual(self.parser.ruleName().name, n)
 
 
     def test_queryRoundTrip(self):
@@ -130,7 +154,7 @@ class DNSParserTests(unittest.TestCase):
                     dns.Query(n, dnstype, dnscls).encode(f)
                     f.seek(0, 0)
                     self.parser.updateData(f.read1(-1))
-                    query = self.parser.query()
+                    query = self.parser.ruleQuery()
                     self.assertEqual(query.name.name, n)
                     self.assertEqual(query.type, dnstype)
                     self.assertEqual(query.cls, dnscls)
@@ -147,7 +171,7 @@ class DNSParserTests(unittest.TestCase):
         stream.seek(0, 0)
         data = stream.read1(-1)
         self.parser.updateData(data)
-        self.assertEqual(record, getattr(self.parser, 'payload')(name, ttl, length))
+        self.assertEqual(record, getattr(self.parser, 'rulePayload')(name, ttl, length))
 
 
     def test_SOA(self):
@@ -195,7 +219,8 @@ class DNSParserTests(unittest.TestCase):
             rin.encode(e)
             length = e.tell()
             e.seek(0, 0)
-            rout = getattr(self.parser.updateData(e.read1(-1)), 'payload')('NAPTR', None, length)
+            self.parser.updateData(e.read1(-1))
+            rout = getattr(self.parser, 'rulePayload')('NAPTR', None, length)
             self.assertEqual(rin.order, rout.order)
             self.assertEqual(rin.preference, rout.preference)
             self.assertEqual(rin.flags, rout.flags)
@@ -247,7 +272,8 @@ class DNSParserTests(unittest.TestCase):
             b'\x00\x00' # number of authorities
             b'\x00\x00' # number of additionals
         )
-        msg = self.parser.updateData(data).message()
+        self.parser.updateData(data)
+        msg = self.parser.ruleMessage()
         self.assertEqual(msg.id, 256)
         self.failIf(msg.answer, "Message was not supposed to be an answer.")
         self.assertEqual(msg.opCode, dns.OP_QUERY)
@@ -272,7 +298,8 @@ class DNSParserTests(unittest.TestCase):
         s = BytesIO()
         msg1.encode(s)
         s.seek(0, 0)
-        msg2 = self.parser.updateData(s.read1(-1)).message()
+        self.parser.updateData(s.read1(-1))
+        msg2 = self.parser.ruleMessage()
         self.failUnless(isinstance(msg2.answers[0].payload, dns.Record_NULL))
         self.assertEqual(msg2.answers[0].payload.payload, bytes)
 
@@ -298,7 +325,8 @@ class DNSParserTests(unittest.TestCase):
             b'\x00\x00' # number of additionals
             + buf.getvalue()
             )
-        message = self.parser.updateData(data).message()
+        self.parser.updateData(data)
+        message = self.parser.ruleMessage()
         self.assertEqual(message.answers, [answer])
         self.assertFalse(message.answers[0].auth)
 
@@ -325,8 +353,95 @@ class DNSParserTests(unittest.TestCase):
             + buf.getvalue()
             )
         answer.auth = True
-        message = self.parser.updateData(data).message()
+        self.parser.updateData(data)
+        message = self.parser.ruleMessage()
         self.assertEqual(message.answers, [answer])
         self.assertTrue(message.answers[0].auth)
+
+
+
+class DNSDatagramProtocolParserTestCases(unittest.TestCase):
+    """
+    Test various aspects of L{protocol.DNSDatagramProtocolParser}.
+    """
+
+    def setUp(self):
+        """
+        Create a L{protocol.DNSParser} with a deterministic clock.
+        """
+        self.clock = task.Clock()
+        self.controller = TestController()
+        self.proto = protocol.DNSParser(self.controller)
+        transport = proto_helpers.FakeDatagramTransport()
+        self.proto.makeConnection(transport)
+        self.proto.callLater = self.clock.callLater
+
+
+    def test_truncatedPacket(self):
+        """
+        Test that when a short datagram is received, datagramReceived does
+        not raise an exception while processing it.
+        """
+        self.proto.datagramReceived(
+            b'', address.IPv4Address('UDP', '127.0.0.1', 12345))
+        self.assertEqual(self.controller.messages, [])
+
+
+    def test_simpleQuery(self):
+        """
+        Test content received after a query.
+        """
+        d = self.proto.query(('127.0.0.1', 21345), [dns.Query(b'foo')])
+        self.assertEqual(len(self.proto.liveMessages.keys()), 1)
+        m = dns.Message()
+        m.id = next(iter(self.proto.liveMessages.keys()))
+        m.answers = [dns.RRHeader(payload=dns.Record_A(address='1.2.3.4'))]
+        def cb(result):
+            self.assertEqual(result.answers[0].payload.dottedQuad(), '1.2.3.4')
+        d.addCallback(cb)
+        self.proto.datagramReceived(m.toStr(), ('127.0.0.1', 21345))
+        return d
+
+
+    def test_queryTimeout(self):
+        """
+        Test that query timeouts after some seconds.
+        """
+        d = self.proto.query(('127.0.0.1', 21345), [dns.Query(b'foo')])
+        self.assertEqual(len(self.proto.liveMessages), 1)
+        self.clock.advance(10)
+        self.assertFailure(d, dns.DNSQueryTimeoutError)
+        self.assertEqual(len(self.proto.liveMessages), 0)
+        return d
+
+
+    def test_writeError(self):
+        """
+        Exceptions raised by the transport's write method should be turned into
+        C{Failure}s passed to errbacks of the C{Deferred} returned by
+        L{DNSParser.query}.
+        """
+        def writeError(message, addr):
+            raise RuntimeError("bar")
+        self.proto.transport.write = writeError
+
+        d = self.proto.query(('127.0.0.1', 21345), [dns.Query(b'foo')])
+        return self.assertFailure(d, RuntimeError)
+
+
+    def test_listenError(self):
+        """
+        Exception L{CannotListenError} raised by C{listenUDP} should be turned
+        into a C{Failure} passed to errback of the C{Deferred} returned by
+        L{DNSParser.query}.
+        """
+        def startListeningError():
+            raise CannotListenError(None, None, None)
+        self.proto.startListening = startListeningError
+        # Clean up transport so that the protocol calls startListening again
+        self.proto.transport = None
+
+        d = self.proto.query(('127.0.0.1', 21345), [dns.Query(b'foo')])
+        return self.assertFailure(d, CannotListenError)
 
 

@@ -12,29 +12,29 @@ from __future__ import absolute_import
 
 # Twisted imports
 from twisted.names import dns
+from twisted.python import log, failure
 
 # Parsley imports
 from ometa.grammar import loadGrammar
 from parsley import wrapGrammar
+from ometa.runtime import ParseError
 
 
 # Parseproto
 import parseproto.dns
 
 
-class DNSParser:
+class DNSParser(object):
 
-    def __init__(self, data=b''):
+    def __init__(self, *args, **kwargs):
         self.bindings = self.setupBindings()
         self.grammar = wrapGrammar(loadGrammar(parseproto.dns, "grammar",
                                                self.bindings))
-        self.updateData(data)
 
 
     def updateData(self, data=b''):
         self.data = data
         self.parser = self.grammar(data)
-        return self.parser
 
 
     def setupBindings(self):
@@ -131,12 +131,52 @@ class DNSParser:
 
 
     def __getattr__(self, item):
-        return getattr(self.parser, item)
+        """
+        @param item: item is the rule to be invoked. It should be in the form
+        ruleFoobar, where foobar is the actual rule.
+        @return:
+        """
+        return getattr(self.parser, item[4].lower() + item[5:])
 
 
     # a helper
     def showArgs(self, *args, **kwargs):
         print(args, kwargs)
+
+
+
+class DNSDatagramProtocolParser(dns.DNSDatagramProtocol, DNSParser):
+    """
+    Parsing DNS protocol over UDP.
+    """
+
+    def datagramReceived(self, data, addr):
+        """
+        Read a datagram, extract the message in it and trigger the associated
+        Deferred.
+        """
+        self.updateData(data)
+        try:
+            m = self.ruleMessage()
+        except ParseError:
+            log.msg("Encountered ParseError from %s" % (addr,))
+            return
+        except:
+            log.err(failure.Failure(), "Unexpected parsing error")
+            return
+
+        if m.id in self.liveMessages:
+            d, canceller = self.liveMessages[m.id]
+            del self.liveMessages[m.id]
+            canceller.cancel()
+            # XXX we shouldn't need this hack of catching exception on callback()
+            try:
+                d.callback(m)
+            except:
+                log.err()
+        else:
+            if m.id not in self.resends:
+                self.controller.messageReceived(m, self, addr)
 
 
 
