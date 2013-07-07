@@ -1,0 +1,5 @@
+#delimiter = '\r\n'
+#line = <(delimiter* anything ~delimiter)*>
+#initial = line:l -> receiver.rawLineReceived(l)
+
+initial = 'aa':b -> receiver.rawLineReceived(l)
