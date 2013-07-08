@@ -67,7 +67,6 @@ class LineOnlyReceiver(Protocol):
 
 
     def rawLineReceived(self, line):
-        print("I am in and the line is:", line)
         if len(line) > self.MAX_LENGTH:
             # Invoke lineLengthExceeded
             self.lineLengthExceeded(line)
