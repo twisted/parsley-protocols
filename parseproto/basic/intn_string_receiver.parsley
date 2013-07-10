@@ -1,0 +1,4 @@
+
+
+length = (-> receiver.prefixLength):pfl <anything{pfl}>:slen -> receiver.getStringLength(slen)
+initial = length:l ?(receiver.checkStringLength(l)) <anything{l}> -> receiver.stringReceived(l)
