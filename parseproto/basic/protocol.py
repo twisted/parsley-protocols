@@ -42,6 +42,7 @@ class LineOnlyReceiver(Protocol):
 
     """
     MAX_LENGTH = 16384
+    _parserProtocol = None
 
     def updateReceiver(self, sender, parser):
         self.sender = sender
@@ -49,36 +50,17 @@ class LineOnlyReceiver(Protocol):
         return self
 
 
-    def connectionMade(self):
-        # avoid infinite recursion
-        if getattr(self, 'parserProtocol', None) is not None:
-            return
-
-        self.parserProtocol = ParserProtocol(
-            getGrammar(parseproto.basic, "line_only_receiver"),
-            LineOnlyReceiverBaseSender,
-            self.updateReceiver,
-            {}
-        )
-        # could be better for the next line
-        self.parserProtocol.transport = self.transport
-        self.parserProtocol.connectionMade()
-
-
     def dataReceived(self, data):
-        return self.parserProtocol.dataReceived(data)
+        if self._parserProtocol is None:
+            self._parserProtocol = ParserProtocol(
+                getGrammar(parseproto.basic, "line_only_receiver"),
+                LineOnlyReceiverBaseSender,
+                self.updateReceiver,
+                {'MAX_LENGTH': self.MAX_LENGTH, }
+            )
+            self._parserProtocol.makeConnection(self.transport)
 
-
-    def rawLineReceived(self, line):
-        if len(line) > self.MAX_LENGTH:
-            # Invoke lineLengthExceeded
-            self.lineLengthExceeded(line)
-        else:
-            self.lineReceived(line)
-
-        # Explicitly set return value to be None
-        # so as to keep the currentRule unchanged
-        return
+        return self._parserProtocol.dataReceived(data)
 
 
     def lineReceived(self, line):
@@ -111,7 +93,7 @@ class LineOnlyReceiver(Protocol):
 
     def connectionLost(self, reason):
         # a bit ugly
-        self.parserProtocol.disconnecting = True
+        self._parserProtocol.disconnecting = True
 
 
 
@@ -128,6 +110,7 @@ class IntNStringReceiverBaseSender(object):
 class IntNStringReceiver(Protocol, _PauseableMixin):
     MAX_LENGTH = 99999
     _unprocessed = b''
+    _parserProtocol = None
 
     # The to-be-deprecated recvd is eliminated here.
 
@@ -136,21 +119,6 @@ class IntNStringReceiver(Protocol, _PauseableMixin):
         self.parser = parser
         return self
 
-    def connectionMade(self):
-        print("MMMMM AM I INVOKED.????????")
-        # avoid infinite recursion
-        if getattr(self, 'parserProtocol', None) is not None:
-            return
-
-        self.parserProtocol = ParserProtocol(
-            getGrammar(parseproto.basic, "intn_string_receiver"),
-            IntNStringReceiverBaseSender,
-            self.updateReceiver,
-            {}
-        )
-        # could be better for the next line
-        self.parserProtocol.transport = self.transport
-        self.parserProtocol.connectionMade()
 
     def stringReceived(self, string):
         """
@@ -180,11 +148,19 @@ class IntNStringReceiver(Protocol, _PauseableMixin):
         """
         Convert int prefixed strings into calls to stringReceived.
         """
+        if self._parserProtocol is None:
+            self._parserProtocol = ParserProtocol(
+                getGrammar(parseproto.basic, "intn_string_receiver"),
+                IntNStringReceiverBaseSender,
+                self.updateReceiver,
+                {}
+            )
+            self._parserProtocol.makeConnection(self.transport)
         self._unprocessed += data
         if self.paused:
             return
         # we should make ParserProtocol be able to pause when new data is added
-        self.parserProtocol.dataReceived(self._unprocessed)
+        self._parserProtocol.dataReceived(self._unprocessed)
         self._unprocessed = b''
 
 

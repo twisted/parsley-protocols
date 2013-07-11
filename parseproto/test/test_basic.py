@@ -4,7 +4,6 @@ import struct
 
 from twisted.python.compat import iterbytes
 from twisted.trial import unittest
-from twisted.internet import error
 from twisted.test import proto_helpers
 from twisted.protocols.test.test_basic import LPTestCaseMixin
 
@@ -12,6 +11,7 @@ from twisted.protocols.test.test_basic import LPTestCaseMixin
 from parseproto.basic.protocol import LineOnlyReceiver, IntNStringReceiver
 from parseproto.basic.protocol import (
     Int8StringReceiver, Int16StringReceiver, Int32StringReceiver)
+
 
 class LineOnlyTester(LineOnlyReceiver):
     """
@@ -25,8 +25,6 @@ class LineOnlyTester(LineOnlyReceiver):
         Create/clean data received on connection.
         """
         self.received = []
-        # twisted.internet.protcol.BaseProtcol is an old-style class
-        LineOnlyReceiver.connectionMade(self)
 
 
     def lineReceived(self, line):
