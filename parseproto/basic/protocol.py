@@ -10,7 +10,7 @@ from twisted.internet.protocol import Protocol
 from twisted.protocols.basic import _PauseableMixin, StringTooLongError
 
 # Parsley imports
-from ometa.protocol import ParserProtocol
+from ometa.protocol import ParserProtocol as BaseParserProtocol
 from ometa.grammar import OMeta
 
 
@@ -24,6 +24,52 @@ def getGrammar(pkg, name):
     return OMeta(src).parseGrammar(name)
 
 
+class ParserProtocol(BaseParserProtocol):
+
+    def connectionMade(self):
+        self.sender = self.senderFactory(self.transport)
+        self.bindings['receiver'] = self.receiver = self.receiverFactory(self.sender, self)
+        self.receiver.prepareParsing()
+        self._setupInterp()
+
+
+    def connectionLost(self, reason):
+        if self.disconnecting:
+            return
+        self.receiver.finishParsing(reason)
+        self.disconnecting = True
+
+
+class _ReceiverMixin():
+    _parserProtocol = None
+    _parsleyGrammar = b''
+    _bindings = {}
+
+    def _updateReceiver(self, sender, parser):
+        self.sender = sender
+        self.parser = parser
+        return self
+
+    def _initializeParserProtocol(self):
+        self._parserProtocol = ParserProtocol(
+                getGrammar(parseproto.basic, self._parsleyGrammar),
+                self._senderFactory,
+                self._updateReceiver,
+                self._bindings
+            )
+        self._parserProtocol.makeConnection(self.transport)
+
+
+    def prepareParsing(self):
+        """
+        Invoked before parsing
+        """
+
+    def finishParsing(self, reason):
+        """
+        Invoked before to stop parsing
+        """
+
 
 class LineOnlyReceiverBaseSender(object):
     def __init__(self, transport):
@@ -33,7 +79,8 @@ class LineOnlyReceiverBaseSender(object):
         return self.transport.writeSequence((line, '\r\n'))
 
 
-class LineOnlyReceiver(Protocol):
+
+class LineOnlyReceiver(_ReceiverMixin, Protocol):
     """
     A protocol that receives only lines.
 
@@ -42,24 +89,12 @@ class LineOnlyReceiver(Protocol):
 
     """
     MAX_LENGTH = 16384
-    _parserProtocol = None
-
-    def updateReceiver(self, sender, parser):
-        self.sender = sender
-        self.parser = parser
-        return self
-
+    _parsleyGrammar = 'line_only_receiver'
+    _senderFactory = LineOnlyReceiverBaseSender
 
     def dataReceived(self, data):
         if self._parserProtocol is None:
-            self._parserProtocol = ParserProtocol(
-                getGrammar(parseproto.basic, "line_only_receiver"),
-                LineOnlyReceiverBaseSender,
-                self.updateReceiver,
-                {'MAX_LENGTH': self.MAX_LENGTH, }
-            )
-            self._parserProtocol.makeConnection(self.transport)
-
+            self._initializeParserProtocol()
         return self._parserProtocol.dataReceived(data)
 
 
@@ -80,6 +115,8 @@ class LineOnlyReceiver(Protocol):
         @param line: The line to send, not including the delimiter.
         @type line: C{bytes}
         """
+        if self._parserProtocol is None:
+            self._initializaParserProtocol()
         return self.sender.sendLine(line)
 
 
@@ -90,10 +127,9 @@ class LineOnlyReceiver(Protocol):
         """
         return error.ConnectionLost('Line length exceeded')
 
-
     def connectionLost(self, reason):
-        # a bit ugly
-        self._parserProtocol.disconnecting = True
+        self._parserProtocol.connectionLost(reason)
+
 
 
 
@@ -107,18 +143,11 @@ class IntNStringReceiverBaseSender(object):
 
 
 
-class IntNStringReceiver(Protocol, _PauseableMixin):
+class IntNStringReceiver(Protocol, _PauseableMixin, _ReceiverMixin):
     MAX_LENGTH = 99999
     _unprocessed = b''
-    _parserProtocol = None
-
-    # The to-be-deprecated recvd is eliminated here.
-
-    def updateReceiver(self, sender, parser):
-        self.sender = sender
-        self.parser = parser
-        return self
-
+    _parsleyGrammar = 'intn_string_receiver'
+    _senderFactory = IntNStringReceiverBaseSender
 
     def stringReceived(self, string):
         """
@@ -149,13 +178,7 @@ class IntNStringReceiver(Protocol, _PauseableMixin):
         Convert int prefixed strings into calls to stringReceived.
         """
         if self._parserProtocol is None:
-            self._parserProtocol = ParserProtocol(
-                getGrammar(parseproto.basic, "intn_string_receiver"),
-                IntNStringReceiverBaseSender,
-                self.updateReceiver,
-                {}
-            )
-            self._parserProtocol.makeConnection(self.transport)
+            self._initializeParserProtocol()
         self._unprocessed += data
         if self.paused:
             return
@@ -176,6 +199,9 @@ class IntNStringReceiver(Protocol, _PauseableMixin):
             raise StringTooLongError(
                 "Try to send %s bytes whereas maximum is %s" % (
                 len(string), 2 ** (8 * self.prefixLength)))
+
+        if self._parserProtocol is None:
+            self._initializeParserProtocol()
         self.sender.sendString(string, self.structFormat)
 
 
@@ -188,6 +214,10 @@ class IntNStringReceiver(Protocol, _PauseableMixin):
 
     def checkStringLength(self, length):
         return length < self.MAX_LENGTH
+
+
+    def connectionLost(self, reason):
+        self._parserProtocol.connectionLost(reason)
 
 
 class Int32StringReceiver(IntNStringReceiver):

@@ -1,4 +1,4 @@
 delimiter = '\r\n'
-line = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) ->receiver.lineReceived(l)
+line = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) -> receiver.lineReceived(l)
         | -> receiver.lineLengthExceeded(l))
 initial = line:l -> None

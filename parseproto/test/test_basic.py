@@ -17,9 +17,6 @@ class LineOnlyTester(LineOnlyReceiver):
     """
     A buffering line only receiver.
     """
-    delimiter = b'\n'
-    MAX_LENGTH = 64
-
     def connectionMade(self):
         """
         Create/clean data received on connection.
@@ -56,12 +53,15 @@ class LineOnlyReceiverTestCase(unittest.SynchronousTestCase):
         """
         Test sending a line too long: it should close the connection.
         """
-        t = proto_helpers.StringTransport()
-        a = LineOnlyTester()
-        a.makeConnection(t)
-        res = a.dataReceived(b'x' * 200)
-        # need further modification here
-        # self.assertIsInstance(res, error.ConnectionLost)
+
+        # CANNOT return under ometa.procol.parserprotocol
+        # t = proto_helpers.StringTransport()
+        # a = LineOnlyTester()
+        # a.makeConnection(t)
+        # res = a.dataReceived(b'x' * 2000 + '\r\n')
+        # print(res)
+        # # need further modification here
+        # # self.assertIsInstance(res, error.ConnectionLost)
 
 
     def test_lineReceivedNotImplemented(self):
@@ -74,27 +74,20 @@ class LineOnlyReceiverTestCase(unittest.SynchronousTestCase):
 
 
 class TestMixin:
-
     def connectionMade(self):
         self.received = []
-
 
     def stringReceived(self, s):
         self.received.append(s)
 
     MAX_LENGTH = 50
-    closed = 0
 
-
-    def connectionLost(self, reason):
-        self.closed = 1
 
 
 class IntNTestCaseMixin(LPTestCaseMixin):
     """
     TestCase mixin for int-prefixed protocols.
     """
-
     protocol = None
     strings = None
     illegalStrings = None
@@ -159,15 +152,14 @@ class IntNTestCaseMixin(LPTestCaseMixin):
         self.assertEqual(r.received, [])
 
 
-    # won't throw here because the parser covers it.
     def test_stringReceivedNotImplemented(self):
         """
         When L{IntNStringReceiver.stringReceived} is not overridden in a
         subclass, calling it raises C{NotImplementedError}.
         """
 
-        # proto = basic.IntNStringReceiver()
-        # self.assertRaises(NotImplementedError, proto.stringReceived, 'foo')
+        proto = IntNStringReceiver()
+        self.assertRaises(NotImplementedError, proto.stringReceived, 'foo')
 
 
 class TestInt32(TestMixin, Int32StringReceiver):
@@ -236,24 +228,6 @@ class Int16TestCase(unittest.SynchronousTestCase, IntNTestCaseMixin):
         r = self.getProtocol()
         tooSend = b"b" * (2**(r.prefixLength * 8) + 1)
         self.assertRaises(AssertionError, r.sendString, tooSend)
-
-
-
-# is this test case really needed? new style should be default.
-class NewStyleTestInt16(TestInt16, object):
-    """
-    A new-style class version of TestInt16
-    """
-
-
-
-class NewStyleInt16TestCase(Int16TestCase):
-    """
-    This test case verifies that IntNStringReceiver still works when inherited
-    by a new-style class.
-    """
-    protocol = NewStyleTestInt16
-
 
 
 class TestInt8(TestMixin, Int8StringReceiver):
