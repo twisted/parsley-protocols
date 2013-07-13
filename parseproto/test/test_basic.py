@@ -6,6 +6,7 @@ from twisted.python.compat import iterbytes
 from twisted.trial import unittest
 from twisted.test import proto_helpers
 from twisted.protocols.test.test_basic import LPTestCaseMixin
+from twisted.internet import error
 
 
 from parseproto.basic.protocol import LineOnlyReceiver, IntNStringReceiver
@@ -53,15 +54,13 @@ class LineOnlyReceiverTestCase(unittest.SynchronousTestCase):
         """
         Test sending a line too long: it should close the connection.
         """
-
-        # CANNOT return under ometa.procol.parserprotocol
-        # t = proto_helpers.StringTransport()
-        # a = LineOnlyTester()
-        # a.makeConnection(t)
-        # res = a.dataReceived(b'x' * 2000 + '\r\n')
-        # print(res)
-        # # need further modification here
-        # # self.assertIsInstance(res, error.ConnectionLost)
+        t = proto_helpers.StringTransport()
+        a = LineOnlyTester()
+        a.makeConnection(t)
+        res = a.dataReceived(b'x' * 2000 + '\r\n')
+        # need further modification here
+        self.assertIsInstance(res, error.ConnectionLost)
+    test_lineTooLong.skip = 'Cannot return error under parsley.'
 
 
     def test_lineReceivedNotImplemented(self):
