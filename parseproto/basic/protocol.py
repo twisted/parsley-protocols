@@ -5,7 +5,6 @@ from struct import pack, calcsize
 from twisted.internet import error, protocol
 # expedient import for _something
 from twisted.protocols.basic import _PauseableMixin, StringTooLongError
-from twisted.python.failure import Failure
 
 # Parsley imports
 from ometa.grammar import OMeta
@@ -23,31 +22,20 @@ def getGrammar(pkg, name):
 
 
 class TramplinedParser:
-    currentRule = 'initial'
-
     def __init__(self, grammar, receiver, bindings):
         self.grammar = grammar
         self.bindings = dict(bindings)
         self.bindings['receiver'] = self.receiver = receiver
-        self.prepareParsing()
-
-    def setNextRule(self, rule):
-        self.currentRule = rule
-
-    def prepareParsing(self):
-        self.receiver.prepareParsing()
         self._setupInterp()
+
 
     def _setupInterp(self):
         self._interp = TrampolinedGrammarInterpreter(
-            self.grammar, self.currentRule, callback=self._parsedRule,
+            grammar=self.grammar, ruleName='initial', callback=None,
             globals=self.bindings)
 
-    def _parsedRule(self, nextRule, position):
-        if nextRule is not None:
-            self.currentRule = nextRule
 
-    def dataReceived(self, data):
+    def receive(self, data):
         while data:
             try:
                 status = self._interp.receive(data)
@@ -60,10 +48,6 @@ class TramplinedParser:
             data = ''.join(self._interp.input.data[self._interp.input.position:])
             self._setupInterp()
 
-    def finishParsing(self, reason):
-        self.receiver.finishParsing(reason)
-
-
 
 class _ReceiverMixin():
     _tramplinedParser = None
@@ -72,20 +56,10 @@ class _ReceiverMixin():
 
     def _initializeParserProtocol(self):
         self._tramplinedParser = TramplinedParser(
-                grammar = getGrammar(parseproto.basic, self._parsleyGrammar),
-                receiver = self,
-                bindings = self._bindings
-            )
-
-    def prepareParsing(self):
-        """
-        Invoked before parsing
-        """
-
-    def finishParsing(self, reason):
-        """
-        Invoked before to stop parsing
-        """
+            grammar=getGrammar(parseproto.basic, self._parsleyGrammar),
+            receiver=self,
+            bindings=self._bindings
+        )
 
 
 class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
@@ -102,7 +76,7 @@ class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
     def dataReceived(self, data):
         if self._tramplinedParser is None:
             self._initializeParserProtocol()
-        return self._tramplinedParser.dataReceived(data)
+        return self._tramplinedParser.receive(data)
 
 
     def lineReceived(self, line):
@@ -134,8 +108,6 @@ class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
         """
         return error.ConnectionLost('Line length exceeded')
 
-    def connectionLost(self, reason):
-        self._tramplinedParser.finishParsing(reason)
 
 
 class IntNStringReceiver(protocol.Protocol, _PauseableMixin, _ReceiverMixin):
@@ -177,8 +149,7 @@ class IntNStringReceiver(protocol.Protocol, _PauseableMixin, _ReceiverMixin):
         self._unprocessed += data
         if self.paused:
             return
-        # we should make ParserProtocol be able to pause when new data is added
-        self._tramplinedParser.dataReceived(self._unprocessed)
+        self._tramplinedParser.receive(self._unprocessed)
         self._unprocessed = b''
 
 
@@ -207,9 +178,6 @@ class IntNStringReceiver(protocol.Protocol, _PauseableMixin, _ReceiverMixin):
     def checkStringLength(self, length):
         return length < self.MAX_LENGTH
 
-
-    def connectionLost(self, reason):
-        self._tramplinedParser.finishParsing(reason)
 
 
 class Int32StringReceiver(IntNStringReceiver):
