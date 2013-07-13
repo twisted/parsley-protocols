@@ -2,8 +2,7 @@ import functools, os
 from struct import pack, calcsize
 
 # Twisted imports
-from twisted.internet import error
-from twisted.internet.protocol import Protocol
+from twisted.internet import error, protocol
 # expedient import for _something
 from twisted.protocols.basic import _PauseableMixin, StringTooLongError
 from twisted.python.failure import Failure
@@ -23,22 +22,19 @@ def getGrammar(pkg, name):
     return OMeta(src).parseGrammar(name)
 
 
-class ParserProtocol(Protocol):
+class TramplinedParser:
     currentRule = 'initial'
 
-    def __init__(self, grammar, senderFactory, receiverFactory, bindings):
+    def __init__(self, grammar, receiver, bindings):
         self.grammar = grammar
         self.bindings = dict(bindings)
-        self.senderFactory = senderFactory
-        self.receiverFactory = receiverFactory
-        self.disconnecting = False
+        self.bindings['receiver'] = self.receiver = receiver
+        self.prepareParsing()
 
     def setNextRule(self, rule):
         self.currentRule = rule
 
-    def connectionMade(self):
-        self.sender = self.senderFactory(self.transport)
-        self.bindings['receiver'] = self.receiver = self.receiverFactory(self.sender, self)
+    def prepareParsing(self):
         self.receiver.prepareParsing()
         self._setupInterp()
 
@@ -52,49 +48,34 @@ class ParserProtocol(Protocol):
             self.currentRule = nextRule
 
     def dataReceived(self, data):
-        if self.disconnecting:
-            return
-
         while data:
             try:
                 status = self._interp.receive(data)
             except Exception as e:
-                self.connectionLost(Failure())
-                self.transport.abortConnection()
-                return
+                # maybe we should raise it?
+                raise e
             else:
                 if status is _feed_me:
                     return
             data = ''.join(self._interp.input.data[self._interp.input.position:])
             self._setupInterp()
 
-    def connectionLost(self, reason):
-        if self.disconnecting:
-            return
+    def finishParsing(self, reason):
         self.receiver.finishParsing(reason)
-        self.disconnecting = True
 
 
 
 class _ReceiverMixin():
-    _parserProtocol = None
+    _tramplinedParser = None
     _parsleyGrammar = b''
     _bindings = {}
 
-    def _updateReceiver(self, sender, parser):
-        self.sender = sender
-        self.parser = parser
-        return self
-
     def _initializeParserProtocol(self):
-        self._parserProtocol = ParserProtocol(
-                getGrammar(parseproto.basic, self._parsleyGrammar),
-                self._senderFactory,
-                self._updateReceiver,
-                self._bindings
+        self._tramplinedParser = TramplinedParser(
+                grammar = getGrammar(parseproto.basic, self._parsleyGrammar),
+                receiver = self,
+                bindings = self._bindings
             )
-        self._parserProtocol.makeConnection(self.transport)
-
 
     def prepareParsing(self):
         """
@@ -107,16 +88,7 @@ class _ReceiverMixin():
         """
 
 
-class LineOnlyReceiverBaseSender(object):
-    def __init__(self, transport):
-        self.transport = transport
-
-    def sendLine(self, line):
-        return self.transport.writeSequence((line, '\r\n'))
-
-
-
-class LineOnlyReceiver(_ReceiverMixin, Protocol):
+class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
     """
     A protocol that receives only lines.
 
@@ -126,12 +98,11 @@ class LineOnlyReceiver(_ReceiverMixin, Protocol):
     """
     MAX_LENGTH = 16384
     _parsleyGrammar = 'line_only_receiver'
-    _senderFactory = LineOnlyReceiverBaseSender
 
     def dataReceived(self, data):
-        if self._parserProtocol is None:
+        if self._tramplinedParser is None:
             self._initializeParserProtocol()
-        return self._parserProtocol.dataReceived(data)
+        return self._tramplinedParser.dataReceived(data)
 
 
     def lineReceived(self, line):
@@ -151,9 +122,9 @@ class LineOnlyReceiver(_ReceiverMixin, Protocol):
         @param line: The line to send, not including the delimiter.
         @type line: C{bytes}
         """
-        if self._parserProtocol is None:
+        if self._tramplinedParser is None:
             self._initializaParserProtocol()
-        return self.sender.sendLine(line)
+        return self.transport.writeSequence((line, '\r\n'))
 
 
     def lineLengthExceeded(self, line):
@@ -164,26 +135,14 @@ class LineOnlyReceiver(_ReceiverMixin, Protocol):
         return error.ConnectionLost('Line length exceeded')
 
     def connectionLost(self, reason):
-        self._parserProtocol.connectionLost(reason)
+        self._tramplinedParser.finishParsing(reason)
 
 
-
-
-class IntNStringReceiverBaseSender(object):
-    def __init__(self, transport):
-        self.transport = transport
-
-
-    def sendString(self, string, structFormat):
-        self.transport.write(pack(structFormat, len(string)) + string)
-
-
-
-class IntNStringReceiver(Protocol, _PauseableMixin, _ReceiverMixin):
+class IntNStringReceiver(protocol.Protocol, _PauseableMixin, _ReceiverMixin):
     MAX_LENGTH = 99999
     _unprocessed = b''
     _parsleyGrammar = 'intn_string_receiver'
-    _senderFactory = IntNStringReceiverBaseSender
+
 
     def stringReceived(self, string):
         """
@@ -213,13 +172,13 @@ class IntNStringReceiver(Protocol, _PauseableMixin, _ReceiverMixin):
         """
         Convert int prefixed strings into calls to stringReceived.
         """
-        if self._parserProtocol is None:
+        if self._tramplinedParser is None:
             self._initializeParserProtocol()
         self._unprocessed += data
         if self.paused:
             return
         # we should make ParserProtocol be able to pause when new data is added
-        self._parserProtocol.dataReceived(self._unprocessed)
+        self._tramplinedParser.dataReceived(self._unprocessed)
         self._unprocessed = b''
 
 
@@ -235,10 +194,7 @@ class IntNStringReceiver(Protocol, _PauseableMixin, _ReceiverMixin):
             raise StringTooLongError(
                 "Try to send %s bytes whereas maximum is %s" % (
                 len(string), 2 ** (8 * self.prefixLength)))
-
-        if self._parserProtocol is None:
-            self._initializeParserProtocol()
-        self.sender.sendString(string, self.structFormat)
+        return self.transport.write(pack(self.structFormat, len(string)) + string)
 
 
     def getStringLength(self, slen):
@@ -253,7 +209,7 @@ class IntNStringReceiver(Protocol, _PauseableMixin, _ReceiverMixin):
 
 
     def connectionLost(self, reason):
-        self._parserProtocol.connectionLost(reason)
+        self._tramplinedParser.finishParsing(reason)
 
 
 class Int32StringReceiver(IntNStringReceiver):
