@@ -1,5 +1,3 @@
-
-
 import functools, os
 from struct import pack, calcsize
 
@@ -8,10 +6,11 @@ from twisted.internet import error
 from twisted.internet.protocol import Protocol
 # expedient import for _something
 from twisted.protocols.basic import _PauseableMixin, StringTooLongError
+from twisted.python.failure import Failure
 
 # Parsley imports
-from ometa.protocol import ParserProtocol as BaseParserProtocol
 from ometa.grammar import OMeta
+from ometa.interp import TrampolinedGrammarInterpreter, _feed_me
 
 
 # Parseproto
@@ -24,7 +23,18 @@ def getGrammar(pkg, name):
     return OMeta(src).parseGrammar(name)
 
 
-class ParserProtocol(BaseParserProtocol):
+class ParserProtocol(Protocol):
+    currentRule = 'initial'
+
+    def __init__(self, grammar, senderFactory, receiverFactory, bindings):
+        self.grammar = grammar
+        self.bindings = dict(bindings)
+        self.senderFactory = senderFactory
+        self.receiverFactory = receiverFactory
+        self.disconnecting = False
+
+    def setNextRule(self, rule):
+        self.currentRule = rule
 
     def connectionMade(self):
         self.sender = self.senderFactory(self.transport)
@@ -32,12 +42,38 @@ class ParserProtocol(BaseParserProtocol):
         self.receiver.prepareParsing()
         self._setupInterp()
 
+    def _setupInterp(self):
+        self._interp = TrampolinedGrammarInterpreter(
+            self.grammar, self.currentRule, callback=self._parsedRule,
+            globals=self.bindings)
+
+    def _parsedRule(self, nextRule, position):
+        if nextRule is not None:
+            self.currentRule = nextRule
+
+    def dataReceived(self, data):
+        if self.disconnecting:
+            return
+
+        while data:
+            try:
+                status = self._interp.receive(data)
+            except Exception as e:
+                self.connectionLost(Failure())
+                self.transport.abortConnection()
+                return
+            else:
+                if status is _feed_me:
+                    return
+            data = ''.join(self._interp.input.data[self._interp.input.position:])
+            self._setupInterp()
 
     def connectionLost(self, reason):
         if self.disconnecting:
             return
         self.receiver.finishParsing(reason)
         self.disconnecting = True
+
 
 
 class _ReceiverMixin():
