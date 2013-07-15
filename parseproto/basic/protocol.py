@@ -8,45 +8,17 @@ from twisted.protocols.basic import _PauseableMixin, StringTooLongError
 
 # Parsley imports
 from ometa.grammar import OMeta
-from ometa.interp import TrampolinedGrammarInterpreter, _feed_me
 
 
 # Parseproto
 import parseproto.basic
+from parseproto.util.tube import TramplinedParser
 
 # ParserProtocol currently only supports terml based grammar
 def getGrammar(pkg, name):
     base = os.path.dirname(os.path.abspath(pkg.__file__))
     src = open(os.path.join(base, name + ".parsley")).read()
     return OMeta(src).parseGrammar(name)
-
-
-class TramplinedParser:
-    def __init__(self, grammar, receiver, bindings):
-        self.grammar = grammar
-        self.bindings = dict(bindings)
-        self.bindings['receiver'] = self.receiver = receiver
-        self._setupInterp()
-
-
-    def _setupInterp(self):
-        self._interp = TrampolinedGrammarInterpreter(
-            grammar=self.grammar, ruleName='initial', callback=None,
-            globals=self.bindings)
-
-
-    def receive(self, data):
-        while data:
-            try:
-                status = self._interp.receive(data)
-            except Exception as e:
-                # maybe we should raise it?
-                raise e
-            else:
-                if status is _feed_me:
-                    return
-            data = ''.join(self._interp.input.data[self._interp.input.position:])
-            self._setupInterp()
 
 
 class _ReceiverMixin():
