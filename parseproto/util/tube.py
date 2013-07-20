@@ -1,8 +1,6 @@
 from ometa.interp import TrampolinedGrammarInterpreter, _feed_me
 
-
-
-class TramplinedParser:
+class TrampolinedParser:
     """
     A parser that incrementally parses incoming data.
     """
@@ -35,7 +33,7 @@ class TramplinedParser:
     def receive(self, data):
         """
         Receive the incoming data and begin parsing. The parser will parse the
-        data incrementally.
+        data incrementally according to the 'initial' rule in the grammar.
 
         @param data: The raw data received.
         """

@@ -12,7 +12,7 @@ from ometa.grammar import OMeta
 
 # Parseproto
 import parseproto.basic
-from parseproto.util.tube import TramplinedParser
+from parseproto.util.tube import TrampolinedParser
 
 # ParserProtocol currently only supports terml based grammar
 def getGrammar(pkg, name):
@@ -22,12 +22,12 @@ def getGrammar(pkg, name):
 
 
 class _ReceiverMixin():
-    _tramplinedParser = None
+    _trampolinedParser = None
     _parsleyGrammar = b''
     _bindings = {}
 
     def _initializeParserProtocol(self):
-        self._tramplinedParser = TramplinedParser(
+        self._trampolinedParser = TrampolinedParser(
             grammar=getGrammar(parseproto.basic, self._parsleyGrammar),
             receiver=self,
             bindings=self._bindings
@@ -46,9 +46,9 @@ class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
     _parsleyGrammar = 'line_only_receiver'
 
     def dataReceived(self, data):
-        if self._tramplinedParser is None:
+        if self._trampolinedParser is None:
             self._initializeParserProtocol()
-        return self._tramplinedParser.receive(data)
+        return self._trampolinedParser.receive(data)
 
 
     def lineReceived(self, line):
@@ -68,7 +68,7 @@ class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
         @param line: The line to send, not including the delimiter.
         @type line: C{bytes}
         """
-        if self._tramplinedParser is None:
+        if self._trampolinedParser is None:
             self._initializaParserProtocol()
         return self.transport.writeSequence((line, '\r\n'))
 
@@ -116,12 +116,12 @@ class IntNStringReceiver(protocol.Protocol, _PauseableMixin, _ReceiverMixin):
         """
         Convert int prefixed strings into calls to stringReceived.
         """
-        if self._tramplinedParser is None:
+        if self._trampolinedParser is None:
             self._initializeParserProtocol()
         self._unprocessed += data
         if self.paused:
             return
-        self._tramplinedParser.receive(self._unprocessed)
+        self._trampolinedParser.receive(self._unprocessed)
         self._unprocessed = b''
 
 

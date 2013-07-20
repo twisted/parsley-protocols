@@ -6,11 +6,11 @@ from twisted.python.compat import iterbytes
 
 from ometa.grammar import OMeta
 
-from parseproto.util.tube import TramplinedParser
+from parseproto.util.tube import TrampolinedParser
 
 
 
-class TramplinedReceiver():
+class TrampolinedReceiver():
     """
     Receive and store the passed in data.
     """
@@ -21,9 +21,9 @@ class TramplinedReceiver():
         self.received.append(data)
 
 
-class TramplinedParserTestCase(unittest.SynchronousTestCase):
+class TrampolinedParserTestCase(unittest.SynchronousTestCase):
     """
-    Tests for L{parserproto.util.tube.TramplinedParser}
+    Tests for L{parserproto.util.tube.TrampolinedParser}
     """
 
     def _parseGrammar(self, grammar, name="Grammar"):
@@ -41,11 +41,11 @@ class TramplinedParserTestCase(unittest.SynchronousTestCase):
         Since the initial rule inside the grammar is not matched, the receiver
         shouldn't receive any byte.
         """
-        receiver = TramplinedReceiver()
-        tramplinedParser = TramplinedParser(self.grammar, receiver, {})
+        receiver = TrampolinedReceiver()
+        trampolinedParser = TrampolinedParser(self.grammar, receiver, {})
         buf = b'foobarandnotreachdelimiter'
         for c in iterbytes(buf):
-            tramplinedParser.receive(c)
+            trampolinedParser.receive(c)
         self.assertEqual(receiver.received, [])
 
 
@@ -53,13 +53,13 @@ class TramplinedParserTestCase(unittest.SynchronousTestCase):
         """
         The receiver should receive the data according to the grammar.
         """
-        receiver = TramplinedReceiver()
-        tramplinedParser = TramplinedParser(self.grammar, receiver, {})
+        receiver = TrampolinedReceiver()
+        trampolinedParser = TrampolinedParser(self.grammar, receiver, {})
         buf = b'\r\n'.join((b'foo', b'bar', b'foo', b'bar'))
         for c in iterbytes(buf):
-            tramplinedParser.receive(c)
+            trampolinedParser.receive(c)
         self.assertEqual(receiver.received, [b'foo', b'bar', b'foo'])
-        tramplinedParser.receive('\r\n')
+        trampolinedParser.receive('\r\n')
         self.assertEqual(receiver.received, [b'foo', b'bar', b'foo', b'bar'])
 
 
@@ -67,12 +67,12 @@ class TramplinedParserTestCase(unittest.SynchronousTestCase):
         """
         The passed-in bindings should be accessible inside the grammar.
         """
-        receiver = TramplinedReceiver()
+        receiver = TrampolinedReceiver()
         grammar = r"""
             initial = digit:d (-> int(d)+SMALL_INT):val -> receiver.receive(val)
         """
         bindings = {'SMALL_INT': 3}
-        TramplinedParser(self._parseGrammar(grammar), receiver, bindings).receive('0')
+        TrampolinedParser(self._parseGrammar(grammar), receiver, bindings).receive('0')
         self.assertEqual(receiver.received, [3])
 
 
