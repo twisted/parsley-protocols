@@ -6,7 +6,7 @@ item = length:l (?(receiver.checkStringLength(l)) <anything{l}>:data
 
 
 initial = (length:l ?(l == 0) -> receiver.proto_boxReceived()
-            | !(receiver.setMaxKeyLength) item:key
-              !(receiver.setMaxValueLength) item:value
+            | !(receiver.MAX_LENGTH = receiver.MAX_KEY_LENGTH) item:key
+              !(receiver.MAX_LENGTH = receiver.MAX_VALUE_LENGTH) item:value
               -> receiver.proto_keyvalue(key, value)
 )

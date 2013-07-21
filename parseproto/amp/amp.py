@@ -2212,14 +2212,14 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
 
 
     # The longest key allowed
-    _MAX_KEY_LENGTH = 255
+    MAX_KEY_LENGTH = 255
 
     # The longest value allowed (this is somewhat redundant, as longer values
     # cannot be encoded - ah well).
-    _MAX_VALUE_LENGTH = 65535
+    MAX_VALUE_LENGTH = 65535
 
     # The first thing received is a key.
-    MAX_LENGTH = _MAX_KEY_LENGTH
+    MAX_LENGTH = MAX_KEY_LENGTH
 
 
     def proto_boxReceived(self):
@@ -2231,12 +2231,6 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
             self._currentBox = AmpBox()
         self._currentKey = key
         self._currentBox[self._currentKey] = value
-
-    def setMaxKeyLength(self):
-        self.MAX_LENGTH = self._MAX_KEY_LENGTH
-
-    def setMaxValueLength(self):
-        self.MAX_LENGTH = self._MAX_VALUE_LENGTH
 
 
     def lengthLimitExceeded(self, length):
