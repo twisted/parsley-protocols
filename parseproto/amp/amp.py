@@ -191,10 +191,16 @@ from twisted.internet.main import CONNECTION_LOST
 from twisted.internet.error import PeerVerifyError, ConnectionLost
 from twisted.internet.error import ConnectionClosed
 from twisted.internet.defer import Deferred, maybeDeferred, fail
-from twisted.protocols.basic import StatefulStringProtocol
 
+
+
+# MODIFIED
 # parseproto
 from parseproto.basic.protocol import Int16StringReceiver
+import parseproto.amp
+
+
+
 
 try:
     from twisted.internet import ssl
@@ -2051,8 +2057,7 @@ class _DescriptorExchanger(object):
 
 
 
-class BinaryBoxProtocol(StatefulStringProtocol, Int16StringReceiver,
-                        _DescriptorExchanger):
+class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
     """
     A protocol for receiving L{AmpBox}es - key/value pairs - via length-prefixed
     strings.  A box is composed of:
@@ -2098,6 +2103,9 @@ class BinaryBoxProtocol(StatefulStringProtocol, Int16StringReceiver,
     noPeerCertificate = False   # for tests
     innerProtocol = None
     innerProtocolClientFactory = None
+
+    _parsleyGrammarName = 'amp'
+    _parsleyGrammarPKG = parseproto.amp
 
     def __init__(self, boxReceiver):
         _DescriptorExchanger.__init__(self)
@@ -2213,37 +2221,22 @@ class BinaryBoxProtocol(StatefulStringProtocol, Int16StringReceiver,
     # The first thing received is a key.
     MAX_LENGTH = _MAX_KEY_LENGTH
 
-    def proto_init(self, string):
-        """
-        String received in the 'init' state.
-        """
-        self._currentBox = AmpBox()
-        return self.proto_key(string)
 
+    def proto_boxReceived(self):
+        self.boxReceiver.ampBoxReceived(self._currentBox)
+        self._currentBox = None
 
-    def proto_key(self, string):
-        """
-        String received in the 'key' state.  If the key is empty, a complete
-        box has been received.
-        """
-        if string:
-            self._currentKey = string
-            self.MAX_LENGTH = self._MAX_VALUE_LENGTH
-            return 'value'
-        else:
-            self.boxReceiver.ampBoxReceived(self._currentBox)
-            self._currentBox = None
-            return 'init'
+    def proto_keyvalue(self, key, value):
+        if self._currentBox is None:
+            self._currentBox = AmpBox()
+        self._currentKey = key
+        self._currentBox[self._currentKey] = value
 
-
-    def proto_value(self, string):
-        """
-        String received in the 'value' state.
-        """
-        self._currentBox[self._currentKey] = string
-        self._currentKey = None
+    def setMaxKeyLength(self):
         self.MAX_LENGTH = self._MAX_KEY_LENGTH
-        return 'key'
+
+    def setMaxValueLength(self):
+        self.MAX_LENGTH = self._MAX_VALUE_LENGTH
 
 
     def lengthLimitExceeded(self, length):

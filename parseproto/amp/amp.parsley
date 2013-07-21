@@ -1,0 +1,12 @@
+length = (-> receiver.prefixLength):pfl <anything{pfl}>:slen -> receiver.getStringLength(slen)
+
+item = length:l (?(receiver.checkStringLength(l)) <anything{l}>:data
+            | -> receiver.lengthLimitExceeded(l)
+            )
+
+
+initial = (length:l ?(l == 0) -> receiver.proto_boxReceived()
+            | !(receiver.setMaxKeyLength) item:key
+              !(receiver.setMaxValueLength) item:value
+              -> receiver.proto_keyvalue(key, value)
+)

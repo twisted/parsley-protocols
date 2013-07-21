@@ -21,20 +21,27 @@ def getGrammar(pkg, name):
     return OMeta(src).parseGrammar(name)
 
 
-class _ReceiverMixin():
+class _ReceiverMixin(object):
     _trampolinedParser = None
-    _parsleyGrammar = b''
+    _parsleyGrammarName = b''
+    _parsleyGrammarPKG = None
     _bindings = {}
 
     def _initializeParserProtocol(self):
         self._trampolinedParser = TrampolinedParser(
-            grammar=getGrammar(parseproto.basic, self._parsleyGrammar),
+            grammar=getGrammar(self._parsleyGrammarPKG, self._parsleyGrammarName),
             receiver=self,
             bindings=self._bindings
         )
 
 
-class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
+class BaseReceiver(_ReceiverMixin, protocol.Protocol):
+    """
+    This class act as the base receiver for stream oriented protocol.
+    """
+
+
+class LineOnlyReceiver(BaseReceiver):
     """
     A protocol that receives only lines.
 
@@ -43,7 +50,8 @@ class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
 
     """
     MAX_LENGTH = 16384
-    _parsleyGrammar = 'line_only_receiver'
+    _parsleyGrammarPKG = parseproto.basic
+    _parsleyGrammarName = 'line_only_receiver'
 
     def dataReceived(self, data):
         if self._trampolinedParser is None:
@@ -82,10 +90,11 @@ class LineOnlyReceiver(_ReceiverMixin, protocol.Protocol):
 
 
 
-class IntNStringReceiver(protocol.Protocol, _PauseableMixin, _ReceiverMixin):
+class IntNStringReceiver(BaseReceiver, _PauseableMixin):
     MAX_LENGTH = 99999
     _unprocessed = b''
-    _parsleyGrammar = 'intn_string_receiver'
+    _parsleyGrammarPKG = parseproto.basic
+    _parsleyGrammarName = 'intn_string_receiver'
 
 
     def stringReceived(self, string):
