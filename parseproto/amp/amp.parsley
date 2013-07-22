@@ -3,5 +3,5 @@ itemkey = length:l ?(l < receiver.MAX_KEY_LENGTH) <anything{l}>:data
             | -> receiver.lengthLimitExceeded(l)
 itemvalue = length:l ?(l < receiver.MAX_VALUE_LENGTH) <anything{l}>:data
             | -> receiver.lengthLimitExceeded(l)
-pair = ~('\x00\x00') itemkey:key itemvalue:value -> receiver.proto_keyvalue(key, value)
-initial = pair* '\x00\x00' -> receiver.proto_boxReceived()
+pair = ~('\x00\x00') itemkey:key itemvalue:value -> key, value
+initial = pair*:kv '\x00\x00' -> receiver.proto_boxReceived(kv)
