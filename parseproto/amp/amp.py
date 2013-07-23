@@ -2223,6 +2223,12 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
 
 
     def proto_boxReceived(self, kv):
+        self._unprocessed = b''.join(self._trampolinedParser._interp.input.data)
+        self._trampolinedParser._setupInterp()
+        print(self._unprocessed)
+        # I want to know the current parsed position, so that I can correctly handle
+        # the unparsed data to the switched protocol.
+        # Line 2226 doesn't give the remaining data.
         currentBox = AmpBox()
         for key, value in kv:
             currentBox[key] = value
