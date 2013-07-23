@@ -89,13 +89,32 @@ class LineOnlyReceiver(BaseReceiver):
         return error.ConnectionLost('Line length exceeded')
 
 
+class _RecvdCompatHack(object):
+    """
+    Emulates the to-be-deprecated C{IntNStringReceiver.recvd} attribute.
+
+    The C{recvd} attribute was where the working buffer for buffering and
+    parsing netstrings was kept.  It was updated each time new data arrived and
+    each time some of that data was parsed and delivered to application code.
+    The piecemeal updates to its string value were expensive and have been
+    removed from C{IntNStringReceiver} in the normal case.  However, for
+    applications directly reading this attribute, this descriptor restores that
+    behavior.  It only copies the working buffer when necessary (ie, when
+    accessed).  This avoids the cost for applications not using the data.
+
+    This is a custom descriptor rather than a property, because we still need
+    the default __set__ behavior in both new-style and old-style subclasses.
+    """
+    def __get__(self, oself, type=None):
+        return oself._unprocessed[:]
+
 
 class IntNStringReceiver(BaseReceiver, _PauseableMixin):
     MAX_LENGTH = 99999
     _unprocessed = b''
     _parsleyGrammarPKG = parseproto.basic
     _parsleyGrammarName = 'intn_string_receiver'
-
+    recvd = _RecvdCompatHack()
 
     def stringReceived(self, string):
         """
@@ -130,6 +149,9 @@ class IntNStringReceiver(BaseReceiver, _PauseableMixin):
         self._unprocessed += data
         if self.paused:
             return
+        if 'recvd' in self.__dict__:
+            alldata = self.__dict__.pop('recvd')
+            self._unprocessed += alldata
         self._trampolinedParser.receive(self._unprocessed)
         self._unprocessed = b''
 
