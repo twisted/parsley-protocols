@@ -2113,32 +2113,11 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
 
 
     def _switchTo(self, newProto, clientFactory=None):
-        """
-        Switch this BinaryBoxProtocol's transport to a new protocol.  You need
-        to do this 'simultaneously' on both ends of a connection; the easiest
-        way to do this is to use a subclass of ProtocolSwitchCommand.
-
-        @param newProto: the new protocol instance to switch to.
-
-        @param clientFactory: the ClientFactory to send the
-        L{clientConnectionLost} notification to.
-        """
-        # All the data that Int16Receiver has not yet dealt with belongs to our
-        # new protocol: luckily it's keeping that in a handy (although
-        # ostensibly internal) variable for us:
-        newProtoData = self.recvd
-        # We're quite possibly in the middle of a 'dataReceived' loop in
-        # Int16StringReceiver: let's make sure that the next iteration, the
-        # loop will break and not attempt to look at something that isn't a
-        # length prefix.
-        self.recvd = ''
-        # Finally, do the actual work of setting up the protocol and delivering
-        # its first chunk of data, if one is available.
         self.innerProtocol = newProto
         self.innerProtocolClientFactory = clientFactory
         newProto.makeConnection(self.transport)
-        if newProtoData:
-            newProto.dataReceived(newProtoData)
+        # print("_switchTo invoked", newProto)
+        self._trampolinedParser.setNextRule('readdata')
 
 
     def sendBox(self, box):
@@ -2186,6 +2165,7 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
         if self.innerProtocol is not None:
             self.innerProtocol.dataReceived(data)
             return
+        print("dataReceived: ", data)
         return Int16StringReceiver.dataReceived(self, data)
 
 
@@ -2223,9 +2203,6 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
 
 
     def proto_boxReceived(self, kv):
-        self._unprocessed = b''.join(self._trampolinedParser._interp.input.data)
-        self._trampolinedParser._setupInterp()
-        print(self._unprocessed)
         # I want to know the current parsed position, so that I can correctly handle
         # the unparsed data to the switched protocol.
         # Line 2226 doesn't give the remaining data.

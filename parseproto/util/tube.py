@@ -4,6 +4,8 @@ class TrampolinedParser:
     """
     A parser that incrementally parses incoming data.
     """
+
+    currentRule = 'initial'
     def __init__(self, grammar, receiver, bindings):
         """
         Initializes the parser.
@@ -26,8 +28,12 @@ class TrampolinedParser:
         'initial'.
         """
         self._interp = TrampolinedGrammarInterpreter(
-            grammar=self.grammar, ruleName='initial', callback=None,
+            grammar=self.grammar, ruleName=self.currentRule, callback=None,
             globals=self.bindings)
+
+
+    def setNextRule(self, nextRule):
+        self.currentRule = nextRule
 
 
     def receive(self, data):

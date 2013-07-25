@@ -91,9 +91,9 @@ class LineOnlyReceiver(BaseReceiver):
 
 
 
-class _RecvdCompatHack(object):
-    def __get__(self, oself, type=None):
-        return oself._unprocessed[:]
+# class _RecvdCompatHack(object):
+#     def __get__(self, oself, type=None):
+#         return oself._unprocessed[:]
 
 
 class IntNStringReceiver(BaseReceiver, _PauseableMixin):
@@ -101,7 +101,7 @@ class IntNStringReceiver(BaseReceiver, _PauseableMixin):
     _unprocessed = b''
     _parsleyGrammarPKG = parseproto.basic
     _parsleyGrammarName = 'intn_string_receiver'
-    recvd = _RecvdCompatHack()
+    # recvd = _RecvdCompatHack()
 
     def stringReceived(self, string):
         """
@@ -141,8 +141,8 @@ class IntNStringReceiver(BaseReceiver, _PauseableMixin):
             self._unprocessed += alldata
         # need a second thought here.
         # self._compatibilityOffset = len(self._unprocessed)
-        self._unprocessed, unprocessed = b'', self._unprocessed
-        self._trampolinedParser.receive(unprocessed)
+        # self._unprocessed, unprocessed = b'', self._unprocessed
+        self._trampolinedParser.receive(self._unprocessed)
 
 
     def sendString(self, string):
