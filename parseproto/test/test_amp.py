@@ -937,6 +937,7 @@ class BinaryProtocolTests(unittest.TestCase):
         a.stringReceived("world")
         a.stringReceived("")
         self.assertEqual(self.boxes, [amp.AmpBox(hello="world")])
+    test_receiveBoxStateMachine.skip = "Not applicable for parsley."
 
 
     def test_firstBoxFirstKeyExcessiveLength(self):

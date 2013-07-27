@@ -761,6 +761,7 @@ class BoxDispatcher:
             box[ASK] = tag
         box._sendTo(self.boxSender)
         if requiresAnswer:
+            print("_sendBox command tag:", tag)
             result = self._outstandingRequests[tag] = Deferred()
         else:
             result = None
@@ -2119,7 +2120,8 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
         self.innerProtocolClientFactory = clientFactory
         newProto.makeConnection(self.transport)
         # print("_switchTo invoked", newProto)
-        self._trampolinedParser.setNextRule('readdata')
+        if self._trampolinedParser is not None:
+            self._trampolinedParser.setNextRule('readdata')
 
 
     def sendBox(self, box):
@@ -2166,8 +2168,11 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
         # the protocol parser any more; we just hand it off.
         if self.innerProtocol is not None:
             self.innerProtocol.dataReceived(data)
+            print("If I were ever in.")
             return
         print("dataReceived: ", data)
+        if self._trampolinedParser is not None:
+            print("Trampolined_Parser_Data: ", self._trampolinedParser._interp.input.data)
         return Int16StringReceiver.dataReceived(self, data)
 
 
@@ -2211,6 +2216,7 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
         currentBox = AmpBox()
         for key, value in kv:
             currentBox[key] = value
+            print("parsed k,v: ", key, ":", value)
         self.boxReceiver.ampBoxReceived(currentBox)
 
 
