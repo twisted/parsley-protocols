@@ -39,18 +39,18 @@ class TrampolinedParser:
     def receive(self, data):
         """
         Receive the incoming data and begin parsing. The parser will parse the
-        data incrementally according to the 'initial' rule in the grammar.
+        data incrementally according to the 'currentRule' rule in the grammar.
 
         @param data: The raw data received.
         """
         while data:
-            try:
-                status = self._interp.receive(data)
-            except Exception as e:
+            # try:
+            status = self._interp.receive(data)
+            # except Exception as e:
                 # maybe we should raise it?
-                raise e
-            else:
-                if status is _feed_me:
+                # raise e
+            # else:
+            if status is _feed_me:
                     return
             data = ''.join(self._interp.input.data[self._interp.input.position:])
             self._setupInterp()

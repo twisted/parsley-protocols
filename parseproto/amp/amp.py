@@ -711,6 +711,7 @@ class BoxDispatcher:
         self._failAllReason = reason
         OR = self._outstandingRequests.items()
         self._outstandingRequests = None # we can never send another request
+        # print("Are we here?")
         for key, value in OR:
             value.errback(reason)
 
@@ -859,6 +860,7 @@ class BoxDispatcher:
         and L{ERROR_DESCRIPTION} keys.
         """
         question = self._outstandingRequests.pop(box[ERROR])
+        print("Inside _errorReceived", box[ERROR])
         question.addErrback(self.unhandledError)
         errorCode = box[ERROR_CODE]
         description = box[ERROR_DESCRIPTION]
