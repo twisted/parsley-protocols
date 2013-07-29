@@ -2168,11 +2168,8 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
         # the protocol parser any more; we just hand it off.
         if self.innerProtocol is not None:
             self.innerProtocol.dataReceived(data)
-            print("If I were ever in.")
             return
         print("dataReceived: ", data)
-        if self._trampolinedParser is not None:
-            print("Trampolined_Parser_Data: ", self._trampolinedParser._interp.input.data)
         return Int16StringReceiver.dataReceived(self, data)
 
 
