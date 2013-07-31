@@ -21,8 +21,8 @@ from twisted.cred.error import UnauthorizedLogin
 from twisted.mail import imap4
 
 # parseproto imports
-import parseproto.smtp.protocol as smtp
 # from twisted.mail import smtp
+from parseproto.smtp import smtp
 
 try:
     from twisted.test.ssl_helpers import ClientTLSContext, ServerTLSContext
@@ -157,7 +157,8 @@ Someone set up us the bomb!\015
             raise AssertionError(self.factory.domains['baz.com'].messages)
         protocol.setTimeout(None)
 
-    testMessages.suppress = [util.suppress(message='DomainSMTP', category=DeprecationWarning)]
+    # testMessages.suppress = [util.suppress(message='DomainSMTP', category=DeprecationWarning)]
+    testMessages.skip = "This imports twisted.mail.smtp indirectly."
 
 mail = '''\
 Subject: hello
