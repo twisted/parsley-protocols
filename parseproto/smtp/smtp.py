@@ -27,6 +27,9 @@ from twisted.python import util
 from twisted import cred
 from twisted.python.runtime import platform
 
+# parseproto imports
+import parseproto.basic.protocol as proto_basic
+
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -498,7 +501,7 @@ class IMessage(Interface):
         semantics should be to discard the message
         """
 
-class SMTP(basic.LineOnlyReceiver, policies.TimeoutMixin):
+class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
     """
     SMTP server-side protocol.
     """
@@ -527,8 +530,29 @@ class SMTP(basic.LineOnlyReceiver, policies.TimeoutMixin):
     # Cred cleanup function.
     _onLogout = None
 
+    # parsley grammar
+    import parseproto.smtp
+    _parsleyGrammarPKG = parseproto.smtp
+    _parsleyGrammarName = "smtp"
+
+    # make sure object is in this class's mro
+    @property
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, val):
+        self._mode = val
+        if self._trampolinedParser is not None:
+            self._trampolinedParser.setNextRule("line_" + val)
+
+    @mode.deleter
+    def mode(self):
+        del self._mode
+
+
     def __init__(self, delivery=None, deliveryFactory=None):
-        self.mode = COMMAND
+        self._mode = COMMAND
         self._from = None
         self._helo = None
         self._to = []
@@ -563,23 +587,30 @@ class SMTP(basic.LineOnlyReceiver, policies.TimeoutMixin):
         self.sendLine('%3.3d %s' % (code,
                                     lastline and lastline[0] or ''))
 
-    def lineReceived(self, line):
+    def lineReceived(self, *args, **kwargs):
         self.resetTimeout()
-        return getattr(self, 'state_' + self.mode)(line)
+        return getattr(self, 'state_' + self.mode)(*args, **kwargs)
 
-    def state_COMMAND(self, line):
+    # def state_COMMAND(self, line):
         # Ignore leading and trailing whitespace, as well as an arbitrary
         # amount of whitespace between the command and its argument, though
         # it is not required by the protocol, for it is a nice thing to do.
-        line = line.strip()
+        # line = line.strip()
+        #
+        # parts = line.split(None, 1)
+        # if parts:
+        #     method = self.lookupMethod(parts[0]) or self.do_UNKNOWN
+        #     if len(parts) == 2:
+        #         method(parts[1])
+        #     else:
+        #         method('')
+        # else:
+        #     self.sendSyntaxError()
 
-        parts = line.split(None, 1)
-        if parts:
-            method = self.lookupMethod(parts[0]) or self.do_UNKNOWN
-            if len(parts) == 2:
-                method(parts[1])
-            else:
-                method('')
+    def state_COMMAND(self, cmd, param, *args, **kwargs):
+        if cmd:
+            method = self.lookupMethod(cmd) or self.do_UNKNOWN
+            method(param)
         else:
             self.sendSyntaxError()
 
@@ -780,7 +811,7 @@ class SMTP(basic.LineOnlyReceiver, policies.TimeoutMixin):
         self._to = []
         self.sendCode(250, 'I remember nothing.')
 
-    def dataLineReceived(self, line):
+    def dataLineReceived(self, line, *args, **kwargs):
         if line[:1] == '.':
             if line == '.':
                 self.mode = COMMAND

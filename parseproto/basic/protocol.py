@@ -78,7 +78,7 @@ class LineOnlyReceiver(BaseReceiver):
         @type line: C{bytes}
         """
         if self._trampolinedParser is None:
-            self._initializaParserProtocol()
+            self._initializeParserProtocol()
         return self.transport.writeSequence((line, '\r\n'))
 
 
