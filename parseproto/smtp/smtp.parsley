@@ -3,13 +3,18 @@ initial = line_command
 delimiter = '\r\n'
 ws = (' ' | '\t')*
 
-line_command = ~delimiter ws command:cmd ws parameter:param -> receiver.lineReceived(cmd=cmd, param=param)
-
+line_command = position:start
+               ~delimiter ws command:cmd ws parameter:param
+               delimiter
+               position:end
+               (?(end-start <= receiver.MAX_LENGTH) -> receiver.lineReceived(cmd=cmd, param=param)
+        | (-> receiver._trampolinedParser._interp.input.data[start:end]):l -> receiver.lineLengthExceeded(l))
+position = -> receiver._trampolinedParser._interp.input.position
 # supposing the max command length is 6
 command = <letter{0,6}>
 parameter = <(~delimiter ws anything)*>
 
-line_data = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) -> receiver.lineReceived(line=line)
+line_data = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) -> receiver.lineReceived(line=l)
         | -> receiver.lineLengthExceeded(l))
 
 

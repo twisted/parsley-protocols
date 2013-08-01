@@ -544,7 +544,7 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
     def mode(self, val):
         self._mode = val
         if self._trampolinedParser is not None:
-            self._trampolinedParser.setNextRule("line_" + val)
+            self._trampolinedParser.setNextRule("line_" + val.lower())
 
     @mode.deleter
     def mode(self):
@@ -589,6 +589,9 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
 
     def lineReceived(self, *args, **kwargs):
         self.resetTimeout()
+        print("Sure, I shall be in.")
+        print(args)
+        print(kwargs)
         return getattr(self, 'state_' + self.mode)(*args, **kwargs)
 
     # def state_COMMAND(self, line):
