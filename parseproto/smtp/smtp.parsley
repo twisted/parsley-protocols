@@ -1,21 +1,45 @@
 initial = line_command
 
+# sws: single whitespace
+sws = ~delimiter (' '| '\r' | '\n' | '\t' | '\f' | '\v')
 delimiter = '\r\n'
-ws = (' ' | '\t')*
 
-line_command = position:start
-               ~delimiter ws command:cmd ws parameter:param
-               delimiter
-               position:end
-               (?(end-start <= receiver.MAX_LENGTH) -> receiver.lineReceived(cmd=cmd, param=param)
-        | (-> receiver._trampolinedParser._interp.input.data[start:end]):l -> receiver.lineLengthExceeded(l))
-position = -> receiver._trampolinedParser._interp.input.position
+line_command = sws* command:cmd sws*
 # supposing the max command length is 6
-command = <letter{0,6}>
-parameter = <(~delimiter ws anything)*>
+command = <letter{0,6}>:cmd !(receiver.state_COMMAND(cmd))
+parameter = <(~delimiter anything)*>:param delimiter
 
+cmd_mail = (
+        ?(receiver.do_MAIL(q="from")) parameter # This parameter is discarded.
+        | icase("FROM:") sws* mail_path:from sws* (sws <~delimiter anything*>:opts)? delimiter
+            -> receiver.do_MAIL(q="to", path=from)
+        | -> receiver.do_MAIL(q="notmatch")
+        ) !(receiver.mode = "command)
+cmd_rcpt =
+
+
+cmd_others :name =
+mail_path = "<>"
+        | <'<' qstring:qs '>'>
+        | qstring
+qstring = <('"' (~('"') anything)* '"'
+        | "\\" ~delimiter anything
+        | atom
+        | anything:ch ?(ch in "@.,:") -> ch
+        )+>
+atom = letterOrDigit
+    | anything:ch ?(ch in "-!\#$%&'*+/=?^_`{|}~"
+
+icase :s = (-> len(s)):length <anything{length}>:matched ?(matched.upper() == s.upper()) -> matched
 line_data = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) -> receiver.lineReceived(line=l)
         | -> receiver.lineLengthExceeded(l))
 
 
+#line_command = position:start
+#               ~delimiter ws command:cmd ws parameter:param
+#               delimiter
+#               position:end
+#               (?(end-start <= receiver.MAX_LENGTH) -> receiver.lineReceived(cmd=cmd, param=param)
+#        | (-> receiver._trampolinedParser._interp.input.data[start:end]):l -> receiver.lineLengthExceeded(l))
+# position = -> receiver._trampolinedParser._interp.input.position
 

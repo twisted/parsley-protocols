@@ -610,8 +610,15 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
         # else:
         #     self.sendSyntaxError()
 
-    def state_COMMAND(self, cmd, param, *args, **kwargs):
+    def state_COMMAND(self, cmd):
         if cmd:
+            if cmd.upper() in ("MAIL", "RCPT"):
+                self._trampolinedParser.setNextRule("cmd_" + cmd.lower())
+                return
+            else:
+                if cmd.upper() not in ("HELO", "QUIT", "DATA", "REST"):
+                    cmd = "UNKNOWN"
+                self._trampolinedParser.setNextRule("cmd_others")
             method = self.lookupMethod(cmd) or self.do_UNKNOWN
             method(param)
         else:
@@ -663,25 +670,48 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
                          )\s*(\s(?P<opts>.*))? # Optional WS + ESMTP options
                          $''',re.I|re.X)
 
-    def do_MAIL(self, rest):
-        if self._from:
-            self.sendCode(503,"Only one sender per message, please")
+    def do_MAIL(self, q, path=b""):
+        if q == "from":
+            if self._from:
+                self.sendCode(503,"Only one sender per message, please")
+                return True
+            return False
+        elif q == "to":
+            self._to = []
+            try:
+                addr = Address(path, self.host)
+            except AddressError as e:
+                self.sendCode(553, str(e))
+                return
+            validated = defer.maybeDeferred(self.validateFrom, self._helo, addr)
+            validated.addCallbacks(self._cbFromValidate, self._ebFromValidate)
             return
-        # Clear old recipient list
-        self._to = []
-        m = self.mail_re.match(rest)
-        if not m:
+
+        elif q == "notmatch":
             self.sendCode(501, "Syntax error")
             return
 
-        try:
-            addr = Address(m.group('path'), self.host)
-        except AddressError, e:
-            self.sendCode(553, str(e))
-            return
 
-        validated = defer.maybeDeferred(self.validateFrom, self._helo, addr)
-        validated.addCallbacks(self._cbFromValidate, self._ebFromValidate)
+
+    # def do_MAIL(self, rest):
+    #     if self._from:
+    #         self.sendCode(503,"Only one sender per message, please")
+    #         return
+    #     # Clear old recipient list
+    #     self._to = []
+    #     m = self.mail_re.match(rest)
+    #     if not m:
+    #         self.sendCode(501, "Syntax error")
+    #         return
+    #
+    #     try:
+    #         addr = Address(m.group('path'), self.host)
+    #     except AddressError, e:
+    #         self.sendCode(553, str(e))
+    #         return
+    #
+    #     validated = defer.maybeDeferred(self.validateFrom, self._helo, addr)
+    #     validated.addCallbacks(self._cbFromValidate, self._ebFromValidate)
 
 
     def _cbFromValidate(self, from_, code=250, msg='Sender address accepted'):
