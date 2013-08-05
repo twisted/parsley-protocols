@@ -611,18 +611,13 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
         #     self.sendSyntaxError()
 
     def state_COMMAND(self, cmd):
-        if cmd:
-            if cmd.upper() in ("MAIL", "RCPT"):
-                self._trampolinedParser.setNextRule("cmd_" + cmd.lower())
-                return
-            else:
-                if cmd.upper() not in ("HELO", "QUIT", "DATA", "REST"):
-                    cmd = "UNKNOWN"
-                self._trampolinedParser.setNextRule("cmd_others")
-            method = self.lookupMethod(cmd) or self.do_UNKNOWN
-            method(param)
+        if cmd.upper() in ("MAIL", "RCPT"):
+            self._trampolinedParser.setNextRule("cmd_" + cmd.lower())
+            return
         else:
-            self.sendSyntaxError()
+            if cmd.upper() not in ("HELO", "QUIT", "DATA", "REST"):
+                cmd = "UNKNOWN"
+            self._trampolinedParser.setNextRule("cmd_others")
 
     def sendSyntaxError(self):
         self.sendCode(500, 'Error: bad syntax')

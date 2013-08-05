@@ -27,8 +27,14 @@ class TrampolinedParser:
         Resets the parser. The parser will begin parsing with the rule named
         'initial'.
         """
+        if isinstance(self.currentRule, basestring):
+            self.currentRule = (self.currentRule, None, ())
+        elif isinstance(self.currentRule, (tuple, list)):
+            self.currentRule = (self.currentRule[0], None, self.currentRule[-1])
+        else:
+            raise ValueError("Wrong rule format.")
         self._interp = TrampolinedGrammarInterpreter(
-            grammar=self.grammar, ruleName=self.currentRule, callback=None,
+            grammar=self.grammar, rule=self.currentRule, callback=None,
             globals=self.bindings)
 
 

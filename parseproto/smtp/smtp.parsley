@@ -5,8 +5,9 @@ sws = ~delimiter (' '| '\r' | '\n' | '\t' | '\f' | '\v')
 delimiter = '\r\n'
 
 line_command = sws* command:cmd sws*
+            | -> receiver.sendSyntaxError()
 # supposing the max command length is 6
-command = <letter{0,6}>:cmd !(receiver.state_COMMAND(cmd))
+command = <letter{1,6}>:cmd !(receiver.state_COMMAND(cmd))
 parameter = <(~delimiter anything)*>:param delimiter
 
 cmd_mail = (
