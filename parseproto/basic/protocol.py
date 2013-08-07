@@ -13,7 +13,7 @@ from ometa.grammar import OMeta
 
 # Parseproto
 import parseproto.basic
-from parseproto.util.tube import TrampolinedParser
+from ometa.tube import TrampolinedParser
 
 # ParserProtocol currently only supports terml based grammar
 def getGrammar(pkg, name):
@@ -27,6 +27,7 @@ class _ReceiverMixin(object):
     _parsleyGrammarName = b''
     _parsleyGrammarPKG = None
     _bindings = {}
+    currentRule = "initial"
 
     def _initializeParserProtocol(self):
         self._trampolinedParser = TrampolinedParser(
@@ -34,6 +35,10 @@ class _ReceiverMixin(object):
             receiver=self,
             bindings=self._bindings
         )
+
+    # this is a utility function.
+    def showArg(self, *args):
+        print(args)
 
 
 class BaseReceiver(_ReceiverMixin, protocol.Protocol):

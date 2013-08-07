@@ -544,7 +544,7 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
     def mode(self, val):
         self._mode = val
         if self._trampolinedParser is not None:
-            self._trampolinedParser.setNextRule("line_" + val.lower())
+            self.currentRule = "line_" + val.lower()
 
     @mode.deleter
     def mode(self):
@@ -587,12 +587,12 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
         self.sendLine('%3.3d %s' % (code,
                                     lastline and lastline[0] or ''))
 
-    def lineReceived(self, *args, **kwargs):
-        self.resetTimeout()
-        print("Sure, I shall be in.")
-        print(args)
-        print(kwargs)
-        return getattr(self, 'state_' + self.mode)(*args, **kwargs)
+    # def lineReceived(self, *args, **kwargs):
+    #     self.resetTimeout()
+    #     print("Sure, I shall be in.")
+    #     print(args)
+    #     print(kwargs)
+    #     return getattr(self, 'state_' + self.mode)(*args, **kwargs)
 
     # def state_COMMAND(self, line):
         # Ignore leading and trailing whitespace, as well as an arbitrary
@@ -612,12 +612,16 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
 
     def state_COMMAND(self, cmd):
         if cmd.upper() in ("MAIL", "RCPT"):
-            self._trampolinedParser.setNextRule("cmd_" + cmd.lower())
+            self.currentRule = "cmd_" + cmd.lower()
+            return
+        elif cmd.upper == "DATA":
+            self.currentRule = "line_DATA"
             return
         else:
-            if cmd.upper() not in ("HELO", "QUIT", "DATA", "REST"):
+            if cmd.upper() not in ("HELO", "QUIT", "RSET"):
                 cmd = "UNKNOWN"
-            self._trampolinedParser.setNextRule("cmd_others")
+            self.currentRule = "cmd_others", cmd.lower()
+            return
 
     def sendSyntaxError(self):
         self.sendCode(500, 'Error: bad syntax')
@@ -728,27 +732,50 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
                 'Requested action aborted: local error in processing')
 
 
-    def do_RCPT(self, rest):
-        if not self._from:
-            self.sendCode(503, "Must have sender before recipient")
+    def do_RCPT(self, q, path=b''):
+        if q == "from":
+            if not self._from:
+                self.sendCode(503, "Must have sender before recipient")
             return
-        m = self.rcpt_re.match(rest)
-        if not m:
+        elif q == "rec":
+            try:
+                user = User(path, self._helo, self, self._from)
+            except AddressError as e:
+                self.sendCode(553, str(e))
+                return
+            d = defer.maybeDeferred(self.validateTo, user)
+            d.addCallbacks(
+                self._cbToValidate,
+                self._ebToValidate,
+                callbackArgs=(user,)
+            )
+            return
+        elif q == "notmatch":
             self.sendCode(501, "Syntax error")
             return
 
-        try:
-            user = User(m.group('path'), self._helo, self, self._from)
-        except AddressError, e:
-            self.sendCode(553, str(e))
-            return
 
-        d = defer.maybeDeferred(self.validateTo, user)
-        d.addCallbacks(
-            self._cbToValidate,
-            self._ebToValidate,
-            callbackArgs=(user,)
-        )
+    # def do_RCPT(self, rest):
+    #     if not self._from:
+    #         self.sendCode(503, "Must have sender before recipient")
+    #         return
+    #     m = self.rcpt_re.match(rest)
+    #     if not m:
+    #         self.sendCode(501, "Syntax error")
+    #         return
+    #
+    #     try:
+    #         user = User(m.group('path'), self._helo, self, self._from)
+    #     except AddressError, e:
+    #         self.sendCode(553, str(e))
+    #         return
+    #
+    #     d = defer.maybeDeferred(self.validateTo, user)
+    #     d.addCallbacks(
+    #         self._cbToValidate,
+    #         self._ebToValidate,
+    #         callbackArgs=(user,)
+    #     )
 
     def _cbToValidate(self, to, user=None, code=250, msg='Recipient address accepted'):
         if user is None:

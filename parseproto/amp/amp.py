@@ -2119,9 +2119,8 @@ class BinaryBoxProtocol(Int16StringReceiver, _DescriptorExchanger):
         self.innerProtocol = newProto
         self.innerProtocolClientFactory = clientFactory
         newProto.makeConnection(self.transport)
-        # print("_switchTo invoked", newProto)
         if self._trampolinedParser is not None:
-            self._trampolinedParser.setNextRule('readdata')
+            self.currentRule = "readdata"
 
 
     def sendBox(self, box):
