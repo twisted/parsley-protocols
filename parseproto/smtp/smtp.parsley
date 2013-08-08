@@ -5,9 +5,9 @@ sws = ~delimiter (' '| '\r' | '\n' | '\t' | '\f' | '\v')
 delimiter = '\r\n'
 
 line_command = sws* command:cmd sws*
-            | -> receiver.sendSyntaxError()
-# supposing the max command length is 6
-command = <letter{1,6}>:cmd !(receiver.state_COMMAND(cmd))
+            | <(~delimiter anything)*> delimiter !(receiver.sendSyntaxError())
+# supposing the max command length is 20
+command = <letter{1,20}>:cmd !(receiver.state_COMMAND(cmd))
 parameter = <(~delimiter anything)*>:param
 
 cmd_mail = (
@@ -23,12 +23,13 @@ cmd_rcpt = (
         | -> receiver.doRCPT("notmatch")
         ) !(setattr(receiver, "mode", "command"))
 
+cmd_data = parameter:param delimiter -> receiver.do_DATA(param)
+
+cmd_others :name = parameter:param delimiter !(getattr(receiver, "do_"+name.upper())(param))
+                   !(setattr(receiver, 'mode', "command"))
+
 rcpt_path = <'<' qstring:qs '>'>
         | qstring
-cmd_others :name = parameter:param delimiter !(getattr(receiver, "do_"+name.upper())(param))
-                    !(setattr(receiver, 'mode', "command"))
-
-
 mail_path = "<>"
         | <'<' qstring:qs '>'>
         | qstring
@@ -41,9 +42,16 @@ atom = anything:ch ?('0'<=ch<='9' or 'A'<=ch<='Z' or 'a'<=ch<='z')
     | anything:ch ?(ch in "-!\#$%&'*+/=?^_`{|}~")
 
 icase :s = (-> len(s)):length <anything{length}>:matched ?(matched.upper() == s.upper()) -> matched
-line_data = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) -> receiver.do_DATA(l)
+line_data = line:l !(receiver.state_DATA(l))
+line = <(~delimiter anything)*>:l delimiter (?(len(l) <= receiver.MAX_LENGTH) -> l
         | -> receiver.lineLengthExceeded(l))
 
+
+
+# This is for esmtp
+cmd_auth = parameter:param delimiter !(receiver.ext_AUTH(param))
+cmd_starttls = parameter:param delimiter !(receiver.ext_STARTTLS(param)) !(setattr(receiver, 'mode', "command"))
+line_auth = line:l !(receiver.state_AUTH(l))
 
 #line_command = position:start
 #               ~delimiter ws command:cmd ws parameter:param

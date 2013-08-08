@@ -756,7 +756,7 @@ class EmptyLineTestCase(unittest.TestCase):
         proto = smtp.SMTP()
         transport = StringTransport()
         proto.makeConnection(transport)
-        proto.lineReceived('')
+        proto.dataReceived('\r\n')
         proto.setTimeout(None)
 
         out = transport.value().splitlines()

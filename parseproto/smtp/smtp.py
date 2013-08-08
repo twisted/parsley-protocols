@@ -611,17 +611,14 @@ class SMTP(proto_basic.LineOnlyReceiver, policies.TimeoutMixin):
         #     self.sendSyntaxError()
 
     def state_COMMAND(self, cmd):
-        if cmd.upper() in ("MAIL", "RCPT"):
+        if cmd.upper() in ("MAIL", "RCPT", "DATA"):
             self.currentRule = "cmd_" + cmd.lower()
-            return
-        elif cmd.upper == "DATA":
-            self.currentRule = "line_DATA"
-            return
         else:
             if cmd.upper() not in ("HELO", "QUIT", "RSET"):
                 cmd = "UNKNOWN"
             self.currentRule = "cmd_others", cmd.lower()
-            return
+        return
+
 
     def sendSyntaxError(self):
         self.sendCode(500, 'Error: bad syntax')
@@ -1615,11 +1612,19 @@ class ESMTP(SMTP):
             ext['STARTTLS'] = None
         return ext
 
-    def lookupMethod(self, command):
-        m = SMTP.lookupMethod(self, command)
-        if m is None:
-            m = getattr(self, 'ext_' + command.upper(), None)
-        return m
+    # def lookupMethod(self, command):
+    #     m = SMTP.lookupMethod(self, command)
+    #     if m is None:
+    #         m = getattr(self, 'ext_' + command.upper(), None)
+    #     return m
+
+    def state_COMMAND(self, cmd):
+        SMTP.state_COMMAND(self, cmd)
+        if cmd.upper() in ("AUTH", "STARTTLS"):
+            self.currentRule = "cmd_" + cmd.lower()
+        elif cmd.upper() in ("EHLO",):
+            self.currentRule = "cmd_others", cmd.lower()
+        return
 
     def listExtensions(self):
         r = []
