@@ -20,7 +20,7 @@ cmd_rcpt = (
         ?(receiver.do_RCPT(q="from")) parameter delimiter # This parameter is discarded.
         | icase("TO:") sws* rcpt_path:addr sws* (sws <(~delimiter anything)*>:opts)? delimiter
           -> receiver.do_RCPT("rec", addr)
-        | -> receiver.doRCPT("notmatch")
+        | -> receiver.do_RCPT("notmatch")
         ) !(setattr(receiver, "mode", "command"))
 
 cmd_data = parameter:param delimiter -> receiver.do_DATA(param)
