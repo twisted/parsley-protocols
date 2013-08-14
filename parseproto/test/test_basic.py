@@ -6,10 +6,11 @@ from twisted.python.compat import iterbytes
 from twisted.trial import unittest
 from twisted.test import proto_helpers
 from twisted.protocols.test.test_basic import LPTestCaseMixin
-from twisted.internet import error
+from twisted.internet import protocol, error, task
 
 
-from parseproto.basic.protocol import LineOnlyReceiver, IntNStringReceiver
+from parseproto.basic.protocol import (
+    LineOnlyReceiver, LineReceiver, IntNStringReceiver)
 from parseproto.basic.protocol import (
     Int8StringReceiver, Int16StringReceiver, Int32StringReceiver)
 
@@ -69,6 +70,320 @@ class LineOnlyReceiverTestCase(unittest.SynchronousTestCase):
         calling it raises C{NotImplementedError}.
         """
         proto = LineOnlyReceiver()
+        self.assertRaises(NotImplementedError, proto.lineReceived, 'foo')
+
+
+class FlippingLineTester(LineReceiver):
+    """
+    A line receiver that flips between line and raw data modes after one byte.
+    """
+
+    delimiter = b'\n'
+
+    def __init__(self):
+        self.lines = []
+
+
+    def lineReceived(self, line):
+        """
+        Set the mode to raw.
+        """
+        self.lines.append(line)
+        self.setRawMode()
+
+
+    def rawDataReceived(self, data):
+        """
+        Set the mode back to line.
+        """
+        self.setLineMode(data[1:])
+
+
+class LineTester(LineReceiver):
+    """
+    A line receiver that parses data received and make actions on some tokens.
+
+    @type delimiter: C{bytes}
+    @ivar delimiter: character used between received lines.
+    @type MAX_LENGTH: C{int}
+    @ivar MAX_LENGTH: size of a line when C{lineLengthExceeded} will be called.
+    @type clock: L{twisted.internet.task.Clock}
+    @ivar clock: clock simulating reactor callLater. Pass it to constructor if
+        you want to use the pause/rawpause functionalities.
+    """
+
+    delimiter = b'\n'
+    MAX_LENGTH = 64
+
+    def __init__(self, clock=None):
+        """
+        If given, use a clock to make callLater calls.
+        """
+        self.clock = clock
+
+
+    def connectionMade(self):
+        """
+        Create/clean data received on connection.
+        """
+        self.received = []
+
+
+    def lineReceived(self, line):
+        """
+        Receive line and make some action for some tokens: pause, rawpause,
+        stop, len, produce, unproduce.
+        """
+        self.received.append(line)
+        print("got a line:", line)
+        if line == b'':
+            self.setRawMode()
+        elif line == b'pause':
+            self.pauseProducing()
+            self.clock.callLater(0, self.resumeProducing)
+        elif line == b'rawpause':
+            self.pauseProducing()
+            self.setRawMode()
+            self.received.append(b'')
+            self.clock.callLater(0, self.resumeProducing)
+        elif line == b'stop':
+            self.stopProducing()
+        elif line[:4] == b'len ':
+            self.length = int(line[4:])
+        elif line.startswith(b'produce'):
+            self.transport.registerProducer(self, False)
+        elif line.startswith(b'unproduce'):
+            self.transport.unregisterProducer()
+
+
+    def rawDataReceived(self, data):
+        """
+        Read raw data, until the quantity specified by a previous 'len' line is
+        reached.
+        """
+        data, rest = data[:self.length], data[self.length:]
+        self.length = self.length - len(data)
+        self.received[-1] = self.received[-1] + data
+        print("INSIDER:", self.received)
+        if self.length == 0:
+            self.setLineMode(rest)
+
+
+    def lineLengthExceeded(self, line):
+        """
+        Adjust line mode when long lines received.
+        """
+        if len(line) > self.MAX_LENGTH + 1:
+            self.setLineMode(line[self.MAX_LENGTH + 1:])
+
+class LineReceiverTestCase(unittest.SynchronousTestCase):
+    """
+    Test L{twisted.protocols.basic.LineReceiver}, using the C{LineTester}
+    wrapper.
+    """
+    buffer = b'''\
+len 10
+
+0123456789len 5
+
+1234
+len 20
+foo 123
+
+0123456789
+012345678len 0
+foo 5
+
+1234567890123456789012345678901234567890123456789012345678901234567890
+len 1
+
+a'''
+
+    output = [b'len 10', b'0123456789', b'len 5', b'1234\n',
+              b'len 20', b'foo 123', b'0123456789\n012345678',
+              b'len 0', b'foo 5', b'', b'67890', b'len 1', b'a']
+
+    def test_buffer(self):
+        """
+        Test buffering for different packet size, checking received matches
+        expected data.
+        """
+        for packet_size in range(1, 10):
+            t = proto_helpers.StringIOWithoutClosing()
+            a = LineTester()
+            a.makeConnection(protocol.FileWrapper(t))
+            for i in range(len(self.buffer) // packet_size + 1):
+                s = self.buffer[i * packet_size:(i + 1) * packet_size]
+                print("s is ", s)
+                a.dataReceived(s)
+                print("input**********", "".join(a._trampolinedParser._interp.input.data))
+            self.assertEqual(self.output, a.received)
+
+
+    pauseBuf = b'twiddle1\ntwiddle2\npause\ntwiddle3\n'
+
+    pauseOutput1 = [b'twiddle1', b'twiddle2', b'pause']
+    pauseOutput2 = pauseOutput1 + [b'twiddle3']
+
+
+    def test_pausing(self):
+        """
+        Test pause inside data receiving. It uses fake clock to see if
+        pausing/resuming work.
+        """
+        for packet_size in range(1, 10):
+            t = proto_helpers.StringIOWithoutClosing()
+            clock = task.Clock()
+            a = LineTester(clock)
+            a.makeConnection(protocol.FileWrapper(t))
+            for i in range(len(self.pauseBuf) // packet_size + 1):
+                s = self.pauseBuf[i * packet_size:(i + 1) * packet_size]
+                a.dataReceived(s)
+            self.assertEqual(self.pauseOutput1, a.received)
+            clock.advance(0)
+            self.assertEqual(self.pauseOutput2, a.received)
+
+    rawpauseBuf = b'twiddle1\ntwiddle2\nlen 5\nrawpause\n12345twiddle3\n'
+
+    rawpauseOutput1 = [b'twiddle1', b'twiddle2', b'len 5', b'rawpause', b'']
+    rawpauseOutput2 = [b'twiddle1', b'twiddle2', b'len 5', b'rawpause',
+                       b'12345', b'twiddle3']
+
+
+    def test_rawPausing(self):
+        """
+        Test pause inside raw date receiving.
+        """
+        for packet_size in range(1, 10):
+            t = proto_helpers.StringIOWithoutClosing()
+            clock = task.Clock()
+            a = LineTester(clock)
+            a.makeConnection(protocol.FileWrapper(t))
+            for i in range(len(self.rawpauseBuf) // packet_size + 1):
+                s = self.rawpauseBuf[i * packet_size:(i + 1) * packet_size]
+                a.dataReceived(s)
+            self.assertEqual(self.rawpauseOutput1, a.received)
+            clock.advance(0)
+            self.assertEqual(self.rawpauseOutput2, a.received)
+
+    stop_buf = b'twiddle1\ntwiddle2\nstop\nmore\nstuff\n'
+
+    stop_output = [b'twiddle1', b'twiddle2', b'stop']
+
+
+    def test_stopProducing(self):
+        """
+        Test stop inside producing.
+        """
+        for packet_size in range(1, 10):
+            t = proto_helpers.StringIOWithoutClosing()
+            a = LineTester()
+            a.makeConnection(protocol.FileWrapper(t))
+            for i in range(len(self.stop_buf) // packet_size + 1):
+                s = self.stop_buf[i * packet_size:(i + 1) * packet_size]
+                a.dataReceived(s)
+            self.assertEqual(self.stop_output, a.received)
+
+
+    def test_lineReceiverAsProducer(self):
+        """
+        Test produce/unproduce in receiving.
+        """
+        a = LineTester()
+        t = proto_helpers.StringIOWithoutClosing()
+        a.makeConnection(protocol.FileWrapper(t))
+        a.dataReceived(b'produce\nhello world\nunproduce\ngoodbye\n')
+        self.assertEqual(a.received,
+                         [b'produce', b'hello world', b'unproduce', b'goodbye'])
+
+
+    def test_clearLineBuffer(self):
+        """
+        L{LineReceiver.clearLineBuffer} removes all buffered data and returns
+        it as a C{bytes} and can be called from beneath C{dataReceived}.
+        """
+        class ClearingReceiver(LineReceiver):
+            def lineReceived(self, line):
+                self.line = line
+                self.rest = self.clearLineBuffer()
+
+        protocol = ClearingReceiver()
+        protocol.dataReceived(b'foo\r\nbar\r\nbaz')
+        self.assertEqual(protocol.line, b'foo')
+        self.assertEqual(protocol.rest, b'bar\r\nbaz')
+
+        # Deliver another line to make sure the previously buffered data is
+        # really gone.
+        protocol.dataReceived(b'quux\r\n')
+        self.assertEqual(protocol.line, b'quux')
+        self.assertEqual(protocol.rest, b'')
+
+
+    def test_stackRecursion(self):
+        """
+        Test switching modes many times on the same data.
+        """
+        proto = FlippingLineTester()
+        transport = proto_helpers.StringIOWithoutClosing()
+        proto.makeConnection(protocol.FileWrapper(transport))
+        limit = sys.getrecursionlimit()
+        proto.dataReceived(b'x\nx' * limit)
+        self.assertEqual(b'x' * limit, b''.join(proto.lines))
+
+
+    def test_maximumLineLength(self):
+        """
+        C{LineReceiver} disconnects the transport if it receives a line longer
+        than its C{MAX_LENGTH}.
+        """
+        proto = LineReceiver()
+        transport = proto_helpers.StringTransport()
+        proto.makeConnection(transport)
+        proto.dataReceived(b'x' * (proto.MAX_LENGTH + 1) + b'\r\nr')
+        self.assertTrue(transport.disconnecting)
+
+
+    def test_maximumLineLengthRemaining(self):
+        """
+        C{LineReceiver} disconnects the transport it if receives a non-finished
+        line longer than its C{MAX_LENGTH}.
+        """
+        proto = LineReceiver()
+        transport = proto_helpers.StringTransport()
+        proto.makeConnection(transport)
+        proto.dataReceived(b'x' * (proto.MAX_LENGTH + 1))
+        self.assertTrue(transport.disconnecting)
+
+
+    def test_rawDataError(self):
+        """
+        C{LineReceiver.dataReceived} forwards errors returned by
+        C{rawDataReceived}.
+        """
+        proto = LineReceiver()
+        proto.rawDataReceived = lambda data: RuntimeError("oops")
+        transport = proto_helpers.StringTransport()
+        proto.makeConnection(transport)
+        proto.setRawMode()
+        why = proto.dataReceived(b'data')
+        self.assertIsInstance(why, RuntimeError)
+
+
+    def test_rawDataReceivedNotImplemented(self):
+        """
+        When L{LineReceiver.rawDataReceived} is not overridden in a
+        subclass, calling it raises C{NotImplementedError}.
+        """
+        proto = LineReceiver()
+        self.assertRaises(NotImplementedError, proto.rawDataReceived, 'foo')
+
+
+    def test_lineReceivedNotImplemented(self):
+        """
+        When L{LineReceiver.lineReceived} is not overridden in a subclass,
+        calling it raises C{NotImplementedError}.
+        """
+        proto = LineReceiver()
         self.assertRaises(NotImplementedError, proto.lineReceived, 'foo')
 
 
