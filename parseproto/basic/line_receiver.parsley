@@ -1,8 +1,7 @@
 delimiter = (-> len(receiver.delimiter)):l <anything{l}>:d ?(d == receiver.delimiter) -> d
-line = (-> receiver.MAX_LENGTH):MAX_LEN <(anything){0,2}>:l delimiter (-> receiver.showArg("I am IN")) -> receiver.lineReceived(l)
+line = (-> receiver.MAX_LENGTH):MAX_LEN <(~delimiter anything){0,MAX_LEN}>:l delimiter -> receiver.lineReceived(l)
         # a dirty hack here.
-        | (-> receiver.showArg("I am IN"))
-          (-> len(receiver._trampolinedParser._interp.input.data)):length
+        | (-> len(receiver._trampolinedParser._interp.input.data)):length
             <anything{length}>:alldata
             -> receiver.lineLengthExceeded(alldata)
 data = anything:a -> receiver.rawDataReceived(a)

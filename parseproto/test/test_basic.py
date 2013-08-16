@@ -162,7 +162,6 @@ class LineTester(LineReceiver):
         reached.
         """
         data, rest = data[:self.length], data[self.length:]
-        print(self.received, "raw datareceived is:{} and length is {}".format(data, self.length))
         self.length = self.length - len(data)
         self.received[-1] = self.received[-1] + data
         if self.length == 0:
@@ -214,7 +213,6 @@ a'''
             a.makeConnection(protocol.FileWrapper(t))
             for i in range(len(self.buffer) // packet_size + 1):
                 s = self.buffer[i * packet_size:(i + 1) * packet_size]
-                print("s is ", s)
                 a.dataReceived(s)
             self.assertEqual(self.output, a.received)
 
@@ -348,13 +346,12 @@ a'''
         line longer than its C{MAX_LENGTH}.
         """
         proto = LineReceiver()
-        proto.MAX_LENGTH = 2
         transport = proto_helpers.StringTransport()
         proto.makeConnection(transport)
         proto.dataReceived(b'x' * (proto.MAX_LENGTH + 1))
-        print(transport.disconnecting)
         self.assertTrue(transport.disconnecting)
-    # test_maximumLineLengthRemaining.skip = "Runs too slow under parsley."
+    test_maximumLineLengthRemaining.skip = ("I think max_len support should be"
+                                            "built in parsley")
 
 
     def test_rawDataError(self):
