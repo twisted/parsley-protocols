@@ -50,6 +50,7 @@ import twisted.cred.credentials
 
 # parseproto import
 import parseproto.basic.protocol as proto_basic
+import parseproto.imap4
 
 # locale-independent month names to use instead of strftime's
 _MONTH_NAMES = dict(zip(
@@ -532,6 +533,10 @@ class IMAP4Server(proto_basic.LineReceiver, policies.TimeoutMixin):
 
     parseState = 'command'
 
+    _parsleyGrammarPKG = parseproto.imap4
+
+    _parsleyGrammarName = 'imap4'
+
     def __init__(self, chal = None, contextFactory = None, scheduler = None):
         if chal is None:
             chal = {}
@@ -593,31 +598,54 @@ class IMAP4Server(proto_basic.LineReceiver, policies.TimeoutMixin):
         if self.blocked is not None:
             self.blocked.extend(commands)
 
-    def lineReceived(self, line):
-        if self.blocked is not None:
-            self.blocked.append(line)
-            return
 
-        self.resetTimeout()
+    # If exception occurs, how to catch it inside parsley?
+    # def lineReceived(self, line):
+    #     if self.blocked is not None:
+    #         self.blocked.append(line)
+    #         return
+    #
+    #     self.resetTimeout()
+    #
+    #     f = getattr(self, 'parse_' + self.parseState)
+    #     try:
+    #         f(line)
+    ## Below unimplemented.
+    #     except Exception, e:
+    #         self.sendUntaggedResponse('BAD Server error: ' + str(e))
+    #         log.err()
 
-        f = getattr(self, 'parse_' + self.parseState)
-        try:
-            f(line)
-        except Exception, e:
-            self.sendUntaggedResponse('BAD Server error: ' + str(e))
-            log.err()
+    # def parse_command(self, line):
+    #     args = line.split(None, 2)
+    #     rest = None
+    #     if len(args) == 3:
+    #         tag, cmd, rest = args
+    #     elif len(args) == 2:
+    #         tag, cmd = args
+    #     elif len(args) == 1:
+    #         tag = args[0]
+    #         self.sendBadResponse(tag, 'Missing command')
+    #         return None
+    #     else:
+    #         self.sendBadResponse(None, 'Null command')
+    #         return None
+    #
+    #     cmd = cmd.upper()
+    #     try:
+    #         return self.dispatchCommand(tag, cmd, rest)
+    #     except IllegalClientResponse, e:
+    #         self.sendBadResponse(tag, 'Illegal syntax: ' + str(e))
+    #     except IllegalOperation, e:
+    #         self.sendNegativeResponse(tag, 'Illegal operation: ' + str(e))
+    #     except IllegalMailboxEncoding, e:
+    #         self.sendNegativeResponse(tag, 'Illegal mailbox name: ' + str(e))
 
-    def parse_command(self, line):
-        args = line.split(None, 2)
-        rest = None
-        if len(args) == 3:
-            tag, cmd, rest = args
-        elif len(args) == 2:
-            tag, cmd = args
-        elif len(args) == 1:
-            tag = args[0]
-            self.sendBadResponse(tag, 'Missing command')
-            return None
+
+    def parse_command(self, tag, cmd, rest):
+        if tag:
+            if not any((cmd, rest)):
+                self.sendBadResponse(tag, 'Missing command')
+                return None
         else:
             self.sendBadResponse(None, 'Null command')
             return None

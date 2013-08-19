@@ -6,3 +6,4 @@ line = (-> receiver.MAX_LENGTH):MAX_LEN <(~delimiter anything){0,MAX_LEN}>:l del
             -> receiver.lineLengthExceeded(alldata)
 data = anything:a -> receiver.rawDataReceived(a)
 
+initial = line

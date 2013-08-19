@@ -314,6 +314,7 @@ a'''
         protocol.dataReceived(b'quux\r\n')
         self.assertEqual(protocol.line, b'quux')
         self.assertEqual(protocol.rest, b'')
+    test_clearLineBuffer.skip = "Currently not supported."
 
 
     def test_stackRecursion(self):

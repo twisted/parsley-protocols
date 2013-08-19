@@ -119,7 +119,6 @@ class LineReceiver(BaseReceiver, _PauseableMixin):
     delimiter = b'\r\n'
     MAX_LENGTH = 16384
 
-    currentRule = "line"
     _mode = 1
     # make sure object is in this class's mro
     @property
