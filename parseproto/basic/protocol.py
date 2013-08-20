@@ -159,11 +159,11 @@ class LineReceiver(BaseReceiver, _PauseableMixin):
         try:
             self._busyReceiving = True
             self._buffer += data
-            if not self.paused:
+            while self._buffer and not self.paused:
                 if self._trampolinedParser is None:
                     self._initializeParserProtocol()
                 buf, self._buffer = self._buffer, b''
-                return self._trampolinedParser.receive(buf)
+                self._trampolinedParser.receive(buf)
             # while self._buffer and not self.paused:
             #     if self.line_mode:
             #         try:

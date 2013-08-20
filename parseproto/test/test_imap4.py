@@ -1059,12 +1059,12 @@ class SimpleServer(imap4.IMAP4Server):
         portal.registerChecker(c)
         self.timeoutTest = False
 
-    def lineReceived(self, line):
-        if self.timeoutTest:
-            #Do not send a respones
-            return
+    # def lineReceived(self, line):
+    #     if self.timeoutTest:
+    #         #Do not send a respones
+    #         return
 
-        imap4.IMAP4Server.lineReceived(self, line)
+        # imap4.IMAP4Server.lineReceived(self, line)
 
     _username = 'testuser'
     _password = 'password-test'

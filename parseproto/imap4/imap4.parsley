@@ -1,4 +1,4 @@
-initial = lineState
+initial = line
 
 # sws: single whitespace
 sws = ~delimiter (' '| '\r' | '\n' | '\t' | '\f' | '\v')
@@ -6,13 +6,13 @@ delimiter = (-> len(receiver.delimiter)):l <anything{l}>:d ?(d == receiver.delim
 
 data = anything:a -> receiver.rawDataReceived(a)
 
-line = (-> receiver.MAX_LENGTH):MAX_LEN <(~delimiter anything){0,MAX_LEN}>:l delimiter -> l
+rawline = (-> receiver.MAX_LENGTH):MAX_LEN <(~delimiter anything){0,MAX_LEN}>:l delimiter -> l
         # a dirty hack here.
         | (-> len(receiver._trampolinedParser._interp.input.data)):length
             <anything{length}>:alldata
             -> receiver.lineLengthExceeded(alldata)
 
-lineState = ?(receiver.blocked is not None) line:l !(receiver.blocked.append(l))
+line = ?(receiver.blocked is not None) rawline:l !(receiver.blocked.append(l))
     | !(receiver.resetTimeout()) (-> receiver.parseState):state parseState(state)
 
 parseState :state = ?(state == "command")
@@ -22,6 +22,6 @@ parseState :state = ?(state == "command")
                     delimiter
                     -> receiver.parse_command(tag, cmd, rest)
                 | ?(state in ("idle", "pending"))
-                    line:l
+                    rawline:l
                     -> getattr(receiver, "parse_"+state)(l)
 

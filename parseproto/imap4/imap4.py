@@ -594,7 +594,9 @@ class IMAP4Server(proto_basic.LineReceiver, policies.TimeoutMixin):
         commands = self.blocked
         self.blocked = None
         while commands and self.blocked is None:
-            self.lineReceived(commands.pop(0))
+            # should be in line mode to parse it.
+            # but how could we ensure this?
+            self.dataReceived(commands.pop(0) + self.delimiter)
         if self.blocked is not None:
             self.blocked.extend(commands)
 
