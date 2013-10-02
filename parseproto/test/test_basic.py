@@ -262,6 +262,7 @@ a'''
             self.assertEqual(self.rawpauseOutput1, a.received)
             clock.advance(0)
             self.assertEqual(self.rawpauseOutput2, a.received)
+    test_rawPausing.skip = "pausing implementation undecided."
 
     stop_buf = b'twiddle1\ntwiddle2\nstop\nmore\nstuff\n'
 
@@ -280,7 +281,7 @@ a'''
                 s = self.stop_buf[i * packet_size:(i + 1) * packet_size]
                 a.dataReceived(s)
             self.assertEqual(self.stop_output, a.received)
-
+    test_stopProducing.skip = "pausing implementation undecided."
 
     def test_lineReceiverAsProducer(self):
         """

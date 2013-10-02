@@ -1,4 +1,6 @@
+import cProfile
 from parseproto.test.test_basic import LineReceiver, proto_helpers
+
 
 def test_maximumLineLength():
     """
@@ -13,4 +15,4 @@ def test_maximumLineLength():
 
 
 if __name__ == '__main__':
-    test_maximumLineLength()
+    cProfile.run('test_maximumLineLength()', 'gogo')
